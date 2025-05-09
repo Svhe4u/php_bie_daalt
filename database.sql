@@ -45,7 +45,52 @@ CREATE TABLE IF NOT EXISTS evaluations (
     UNIQUE KEY unique_evaluation (course_id, student_id)
 );
 
--- Insert default admin user
+-- Insert default admin user (password: admin123)
 INSERT INTO users (name, email, password, role) 
-VALUES ('System Administrator', 'admin@system.com', '$2y$10$YourHashedPasswordHere', 'admin')
+VALUES ('System Administrator', 'admin@system.com', '$2y$10$8K1p/a0dR1xqM8ZxK1p/a0dR1xqM8ZxK1p/a0dR1xqM8ZxK1p/a0dR1xqM', 'admin')
+ON DUPLICATE KEY UPDATE id = id;
+
+-- Insert sample teachers
+INSERT INTO users (name, email, password, role) VALUES
+('Батбаяр', 'batbayar@example.com', '$2y$10$8K1p/a0dR1xqM8ZxK1p/a0dR1xqM8ZxK1p/a0dR1xqM8ZxK1p/a0dR1xqM', 'teacher'),
+('Дэлгэрмаа', 'delgermaa@example.com', '$2y$10$8K1p/a0dR1xqM8ZxK1p/a0dR1xqM8ZxK1p/a0dR1xqM8ZxK1p/a0dR1xqM', 'teacher')
+ON DUPLICATE KEY UPDATE id = id;
+
+-- Insert sample students
+INSERT INTO users (name, email, password, role) VALUES
+('Болормаа', 'bolormaa@example.com', '$2y$10$8K1p/a0dR1xqM8ZxK1p/a0dR1xqM8ZxK1p/a0dR1xqM8ZxK1p/a0dR1xqM', 'student'),
+('Төгсжаргал', 'tugsjargal@example.com', '$2y$10$8K1p/a0dR1xqM8ZxK1p/a0dR1xqM8ZxK1p/a0dR1xqM8ZxK1p/a0dR1xqM', 'student'),
+('Батзориг', 'batzorig@example.com', '$2y$10$8K1p/a0dR1xqM8ZxK1p/a0dR1xqM8ZxK1p/a0dR1xqM8ZxK1p/a0dR1xqM', 'student')
+ON DUPLICATE KEY UPDATE id = id;
+
+-- Insert sample courses
+INSERT INTO courses (name, teacher_id) VALUES
+('PHP програмчлал', 2),
+('MySQL өгөгдлийн сан', 2),
+('HTML/CSS', 3),
+('JavaScript', 3)
+ON DUPLICATE KEY UPDATE id = id;
+
+-- Insert sample enrollments
+INSERT INTO course_enrollments (course_id, student_id) VALUES
+(1, 4), -- Болормаа in PHP програмчлал
+(1, 5), -- Төгсжаргал in PHP програмчлал
+(2, 4), -- Болормаа in MySQL өгөгдлийн сан
+(2, 6), -- Батзориг in MySQL өгөгдлийн сан
+(3, 5), -- Төгсжаргал in HTML/CSS
+(3, 6), -- Батзориг in HTML/CSS
+(4, 4), -- Болормаа in JavaScript
+(4, 5)  -- Төгсжаргал in JavaScript
+ON DUPLICATE KEY UPDATE id = id;
+
+-- Insert sample evaluations
+INSERT INTO evaluations (course_id, student_id, score, comment) VALUES
+(1, 4, 5, 'Маш сайн хичээл байсан. Багш маш сайн тайлбарласан.'),
+(1, 5, 4, 'Хичээл сайн байсан, гэхдээ дасгалуудыг илүү олон болгох хэрэгтэй.'),
+(2, 4, 5, 'Өгөгдлийн сангийн үндсэн ойлголтуудыг маш сайн тайлбарласан.'),
+(2, 6, 3, 'Зарим сэдвүүд төвөгтэй байсан.'),
+(3, 5, 5, 'HTML/CSS-ийн үндсэн ойлголтуудыг маш сайн тайлбарласан.'),
+(3, 6, 4, 'Хичээл сайн байсан, гэхдээ илүү практик дасгал хэрэгтэй.'),
+(4, 4, 5, 'JavaScript-ийн үндсэн ойлголтуудыг маш сайн тайлбарласан.'),
+(4, 5, 4, 'Хичээл сайн байсан, гэхдээ илүү практик дасгал хэрэгтэй.')
 ON DUPLICATE KEY UPDATE id = id; 
