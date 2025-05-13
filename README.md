@@ -1,36 +1,36 @@
-# Student Feedback System
+# Сургалтын Үнэлгээний Систем
 
-A web-based system for managing student course evaluations, built with PHP and MySQL.
+PHP болон MySQL ашиглан хийсэн оюутны хичээлийн үнэлгээний веб систем.
 
-## Features
+## Онцлогууд
 
-- User roles (Admin, Teacher, Student)
-- Course management
-- Student enrollment
-- Course evaluations with ratings and comments
-- Detailed statistics and reports
+- Хэрэглэгчийн үүргүүд (Админ, Багш, Оюутан)
+- Хичээлийн удирдлага
+- Оюутны элсэлт
+- Хичээлийн үнэлгээ (оноо болон сэтгэгдэлтэй)
+- Дэлгэрэнгүй статистик болон тайлан
 
-## Requirements
+## Шаардлага
 
-- PHP 7.4 or higher
-- MySQL 5.7 or higher
-- Web server (Apache/Nginx)
+- PHP 7.4 эсвэл түүнээс дээш
+- MySQL 5.7 эсвэл түүнээс дээш
+- Веб сервер (Apache/Nginx)
 
-## Installation
+## Суулгах заавар
 
-1. Clone the repository:
+1. Репозиторийг хуулах:
 ```bash
 git clone https://github.com/Svhe4u/php_bie_daalt.git
 ```
 
-2. Import the database:
+2. Өгөгдлийн сангийн бүтцийг импортлох:
 ```bash
 mysql -u root -p < database.sql
 ```
 
-3. Configure the database connection:
-   - Open `db.php`
-   - Update the database credentials if needed:
+3. Өгөгдлийн сангийн холболтыг тохируулах:
+   - `db.php` файлыг нээх
+   - Өгөгдлийн сангийн нэвтрэх мэдээллийг шаардлагатай бол шинэчлэх:
 ```php
 $host = 'localhost';
 $user = 'root';
@@ -38,28 +38,30 @@ $password = '';
 $database = 'student_feedback';
 ```
 
-4. Set up your web server to point to the project directory
+4. Веб серверийг төслийн хавтас руу чиглүүлэх
 
-5. Access the system:
-   - URL: `http://localhost/student_feedback_project`
-   - Default admin credentials:
-     - Email: admin@system.com
-     - Password: admin123
+5. Системд нэвтрэх:
+   - Хаяг: `http://localhost/student_feedback_project`
+   - Админ хэрэглэгчийн анхны нэвтрэх мэдээлэл:
+     - И-мэйл: admin@system.com
+     - Нууц үг: admin123
 
-## Usage
+## Ашиглах заавар
 
-### Admin
-- Manage users (add/edit/delete)
-- Manage courses
-- View all evaluations
-- View system statistics
+### Админ
+- Хэрэглэгчдийн удирдлага (нэмэх/засах/устгах)
+- Хичээлийн удирдлага
+- Бүх үнэлгээг харах
+- Системийн статистик харах
 
-### Teacher
-- View assigned courses
-- View course evaluations
-- Manage student enrollments
+### Багш
+- Олгосон хичээлүүдээ харах
+- Хичээлийн үнэлгээг харах
+- Оюутны элсэлтийг удирдах
+- Оюутны дүн оруулах, засах
 
-### Student
-- View enrolled courses
-- Submit course evaluations
-- View submitted evaluations 
+### Оюутан
+- Элссэн хичээлүүдээ харах
+- Хичээлийн үнэлгээ өгөх
+- Өгсөн үнэлгээгээ харах
+- Хичээлийн дүнгээ харах 
