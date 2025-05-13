@@ -8,7 +8,7 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'teacher') {
     exit();
 }
 
-// Get teacher's courses with evaluation statistics
+// Get teacher's courses with evaluation and grade statistics
 $stmt = $conn->prepare("
     SELECT 
         c.id,
@@ -17,7 +17,9 @@ $stmt = $conn->prepare("
         c.created_at,
         (SELECT COUNT(*) FROM course_enrollments WHERE course_id = c.id) as student_count,
         (SELECT COUNT(*) FROM evaluations WHERE course_id = c.id) as total_evaluations,
-        (SELECT AVG(score) FROM evaluations WHERE course_id = c.id) as average_score
+        (SELECT AVG(score) FROM evaluations WHERE course_id = c.id) as average_score,
+        (SELECT COUNT(*) FROM grades WHERE course_id = c.id) as graded_count,
+        (SELECT AVG(grade) FROM grades WHERE course_id = c.id) as average_grade
     FROM courses c
     JOIN users u ON c.teacher_id = u.id
     WHERE c.teacher_id = ?
@@ -47,6 +49,26 @@ $stmt = $conn->prepare("
 $stmt->bind_param("i", $_SESSION['user_id']);
 $stmt->execute();
 $recent_evaluations = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+
+// Get recent grades
+$stmt = $conn->prepare("
+    SELECT 
+        g.id,
+        g.grade,
+        g.feedback,
+        g.updated_at,
+        c.name as course_name,
+        u.name as student_name
+    FROM grades g
+    JOIN courses c ON g.course_id = c.id
+    JOIN users u ON g.student_id = u.id
+    WHERE c.teacher_id = ?
+    ORDER BY g.updated_at DESC
+    LIMIT 5
+");
+$stmt->bind_param("i", $_SESSION['user_id']);
+$stmt->execute();
+$recent_grades = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 ?>
 
 <!DOCTYPE html>
@@ -105,7 +127,7 @@ $recent_evaluations = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                                             <th>Хичээл</th>
                                             <th>Оюутны тоо</th>
                                             <th>Үнэлгээ</th>
-                                            <th>Дундаж оноо</th>
+                                            <th>Дүн</th>
                                             <th>Үйлдэл</th>
                                         </tr>
                                     </thead>
@@ -125,21 +147,31 @@ $recent_evaluations = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                                                     </span>
                                                 </td>
                                                 <td>
-                                                    <span class="badge bg-primary">
-                                                        <i class="bi bi-star me-1"></i>
-                                                        <?php echo $course['total_evaluations']; ?> үнэлгээ
-                                                    </span>
-                                                </td>
-                                                <td>
-                                                    <?php if ($course['average_score']): ?>
-                                                        <div class="rating">
-                                                            <?php for ($i = 1; $i <= 5; $i++): ?>
-                                                                <i class="bi bi-star<?php echo $i <= round($course['average_score']) ? '-fill' : ''; ?> text-warning"></i>
-                                                            <?php endfor; ?>
-                                                            <span class="ms-1"><?php echo number_format($course['average_score'], 1); ?>/5</span>
+                                                    <?php if ($course['total_evaluations'] > 0): ?>
+                                                        <div class="d-flex align-items-center">
+                                                            <div class="rating me-2">
+                                                                <?php for ($i = 1; $i <= 5; $i++): ?>
+                                                                    <i class="bi bi-star<?php echo $i <= round($course['average_score']) ? '-fill' : ''; ?> text-warning"></i>
+                                                                <?php endfor; ?>
+                                                            </div>
+                                                            <span class="text-muted small">
+                                                                (<?php echo $course['total_evaluations']; ?>)
+                                                            </span>
                                                         </div>
                                                     <?php else: ?>
                                                         <span class="text-muted">Үнэлгээ байхгүй</span>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td>
+                                                    <?php if ($course['graded_count'] > 0): ?>
+                                                        <span class="badge bg-<?php echo $course['average_grade'] >= 60 ? 'success' : 'danger'; ?>">
+                                                            <?php echo number_format($course['average_grade'], 1); ?>
+                                                        </span>
+                                                        <small class="text-muted ms-1">
+                                                            (<?php echo $course['graded_count']; ?>)
+                                                        </small>
+                                                    <?php else: ?>
+                                                        <span class="text-muted">Дүн байхгүй</span>
                                                     <?php endif; ?>
                                                 </td>
                                                 <td>
@@ -165,41 +197,79 @@ $recent_evaluations = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                     </div>
                 </div>
 
-                <div class="card shadow-sm">
-                    <div class="card-header bg-white">
-                        <h4 class="mb-0">Сүүлийн үнэлгээнүүд</h4>
-                    </div>
-                    <div class="card-body">
-                        <?php if (empty($recent_evaluations)): ?>
-                            <div class="text-center py-4">
-                                <div class="text-muted">
-                                    <i class="bi bi-star fs-4 d-block mb-2"></i>
-                                    Үнэлгээ байхгүй байна
-                                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card shadow-sm mb-4">
+                            <div class="card-header bg-white">
+                                <h4 class="mb-0">Сүүлийн үнэлгээнүүд</h4>
                             </div>
-                        <?php else: ?>
-                            <?php foreach ($recent_evaluations as $eval): ?>
-                                <div class="border-bottom pb-3 mb-3">
-                                    <div class="d-flex justify-content-between align-items-start">
-                                        <div>
-                                            <h6 class="mb-1"><?php echo htmlspecialchars($eval['course_name']); ?></h6>
-                                            <p class="mb-1"><?php echo htmlspecialchars($eval['comment']); ?></p>
-                                            <small class="text-muted">
-                                                <?php echo htmlspecialchars($eval['student_name']); ?> - 
-                                                <?php echo date('Y-m-d', strtotime($eval['created_at'])); ?>
-                                            </small>
-                                        </div>
-                                        <div class="text-end">
-                                            <div class="rating">
-                                                <?php for ($i = 1; $i <= 5; $i++): ?>
-                                                    <i class="bi bi-star<?php echo $i <= $eval['score'] ? '-fill' : ''; ?> text-warning"></i>
-                                                <?php endfor; ?>
-                                            </div>
+                            <div class="card-body">
+                                <?php if (empty($recent_evaluations)): ?>
+                                    <div class="text-center py-4">
+                                        <div class="text-muted">
+                                            <i class="bi bi-star fs-4 d-block mb-2"></i>
+                                            Үнэлгээ байхгүй байна
                                         </div>
                                     </div>
-                                </div>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
+                                <?php else: ?>
+                                    <?php foreach ($recent_evaluations as $eval): ?>
+                                        <div class="d-flex justify-content-between align-items-start mb-3">
+                                            <div>
+                                                <h6 class="mb-1"><?php echo htmlspecialchars($eval['course_name']); ?></h6>
+                                                <p class="mb-1"><?php echo htmlspecialchars($eval['comment']); ?></p>
+                                                <small class="text-muted">
+                                                    <?php echo htmlspecialchars($eval['student_name']); ?> - 
+                                                    <?php echo date('Y-m-d', strtotime($eval['created_at'])); ?>
+                                                </small>
+                                            </div>
+                                            <div class="text-end">
+                                                <div class="rating">
+                                                    <?php for ($i = 1; $i <= 5; $i++): ?>
+                                                        <i class="bi bi-star<?php echo $i <= $eval['score'] ? '-fill' : ''; ?> text-warning"></i>
+                                                    <?php endfor; ?>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="card shadow-sm mb-4">
+                            <div class="card-header bg-white">
+                                <h4 class="mb-0">Сүүлийн дүнгүүд</h4>
+                            </div>
+                            <div class="card-body">
+                                <?php if (empty($recent_grades)): ?>
+                                    <div class="text-center py-4">
+                                        <div class="text-muted">
+                                            <i class="bi bi-check-circle fs-4 d-block mb-2"></i>
+                                            Дүн байхгүй байна
+                                        </div>
+                                    </div>
+                                <?php else: ?>
+                                    <?php foreach ($recent_grades as $grade): ?>
+                                        <div class="d-flex justify-content-between align-items-start mb-3">
+                                            <div>
+                                                <h6 class="mb-1"><?php echo htmlspecialchars($grade['course_name']); ?></h6>
+                                                <p class="mb-1"><?php echo htmlspecialchars($grade['feedback']); ?></p>
+                                                <small class="text-muted">
+                                                    <?php echo htmlspecialchars($grade['student_name']); ?> - 
+                                                    <?php echo date('Y-m-d', strtotime($grade['updated_at'])); ?>
+                                                </small>
+                                            </div>
+                                            <div class="text-end">
+                                                <span class="badge bg-<?php echo $grade['grade'] >= 60 ? 'success' : 'danger'; ?>">
+                                                    <?php echo number_format($grade['grade'], 1); ?>
+                                                </span>
+                                            </div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -214,7 +284,21 @@ $recent_evaluations = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                         $total_courses = count($courses);
                         $total_students = array_sum(array_column($courses, 'student_count'));
                         $total_evaluations = array_sum(array_column($courses, 'total_evaluations'));
-                        $avg_score = array_sum(array_column($courses, 'average_score')) / max($total_courses, 1);
+                        $total_grades = array_sum(array_column($courses, 'graded_count'));
+                        
+                        $avg_score = 0;
+                        if ($total_evaluations > 0) {
+                            $avg_score = array_sum(array_map(function($course) {
+                                return $course['average_score'] * $course['total_evaluations'];
+                            }, $courses)) / $total_evaluations;
+                        }
+                        
+                        $avg_grade = 0;
+                        if ($total_grades > 0) {
+                            $avg_grade = array_sum(array_map(function($course) {
+                                return $course['average_grade'] * $course['graded_count'];
+                            }, $courses)) / $total_grades;
+                        }
                         ?>
                         <div class="d-flex justify-content-between mb-3">
                             <span>Нийт хичээл:</span>
@@ -228,10 +312,20 @@ $recent_evaluations = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                             <span>Нийт үнэлгээ:</span>
                             <span class="fw-bold"><?php echo $total_evaluations; ?></span>
                         </div>
-                        <div class="d-flex justify-content-between">
-                            <span>Дундаж оноо:</span>
+                        <div class="d-flex justify-content-between mb-3">
+                            <span>Нийт дүн:</span>
+                            <span class="fw-bold"><?php echo $total_grades; ?></span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-3">
+                            <span>Дундаж үнэлгээ:</span>
                             <span class="fw-bold">
                                 <?php echo number_format($avg_score, 1); ?>/5
+                            </span>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span>Дундаж дүн:</span>
+                            <span class="fw-bold">
+                                <?php echo number_format($avg_grade, 1); ?>
                             </span>
                         </div>
                     </div>
@@ -243,7 +337,7 @@ $recent_evaluations = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     <!-- Student Modals -->
     <?php foreach ($courses as $course): ?>
         <?php
-        // Get enrolled students for this course
+        // Get enrolled students for this course with grades
         $stmt = $conn->prepare("
             SELECT 
                 u.id,
@@ -252,32 +346,20 @@ $recent_evaluations = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                 ce.enrolled_at,
                 e.score,
                 e.comment,
-                e.created_at as evaluation_date
+                e.created_at as evaluation_date,
+                g.grade,
+                g.feedback as grade_feedback,
+                g.updated_at as grade_updated_at
             FROM course_enrollments ce
             JOIN users u ON ce.student_id = u.id
             LEFT JOIN evaluations e ON e.course_id = ce.course_id AND e.student_id = ce.student_id
+            LEFT JOIN grades g ON g.course_id = ce.course_id AND g.student_id = ce.student_id
             WHERE ce.course_id = ?
             ORDER BY u.name
         ");
         $stmt->bind_param("i", $course['id']);
         $stmt->execute();
         $students = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-
-        // Get all students not enrolled in this course
-        $stmt = $conn->prepare("
-            SELECT id, name, email
-            FROM users
-            WHERE role = 'student'
-            AND id NOT IN (
-                SELECT student_id 
-                FROM course_enrollments 
-                WHERE course_id = ?
-            )
-            ORDER BY name
-        ");
-        $stmt->bind_param("i", $course['id']);
-        $stmt->execute();
-        $available_students = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
         ?>
         <div class="modal fade" id="studentsModal<?php echo $course['id']; ?>" tabindex="-1">
             <div class="modal-dialog modal-lg">
@@ -289,38 +371,6 @@ $recent_evaluations = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body">
-                        <div class="mb-4">
-                            <button type="button" 
-                                    class="btn btn-primary" 
-                                    data-bs-toggle="collapse" 
-                                    data-bs-target="#addStudentForm<?php echo $course['id']; ?>">
-                                <i class="bi bi-person-plus"></i> Оюутан нэмэх
-                            </button>
-                            
-                            <div class="collapse mt-3" id="addStudentForm<?php echo $course['id']; ?>">
-                                <div class="card card-body">
-                                    <form action="../courses/enroll.php" method="POST">
-                                        <input type="hidden" name="course_id" value="<?php echo $course['id']; ?>">
-                                        <div class="mb-3">
-                                            <label for="student_id" class="form-label">Оюутан сонгох</label>
-                                            <select class="form-select" name="student_id" required>
-                                                <option value="">Оюутан сонгоно уу</option>
-                                                <?php foreach ($available_students as $student): ?>
-                                                    <option value="<?php echo $student['id']; ?>">
-                                                        <?php echo htmlspecialchars($student['name']); ?> 
-                                                        (<?php echo htmlspecialchars($student['email']); ?>)
-                                                    </option>
-                                                <?php endforeach; ?>
-                                            </select>
-                                        </div>
-                                        <button type="submit" class="btn btn-primary">
-                                            <i class="bi bi-check-circle"></i> Нэмэх
-                                        </button>
-                                    </form>
-                                </div>
-                            </div>
-                        </div>
-
                         <?php if (empty($students)): ?>
                             <div class="text-center py-4">
                                 <div class="text-muted">
@@ -336,7 +386,7 @@ $recent_evaluations = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                                             <th>Оюутан</th>
                                             <th>И-мэйл</th>
                                             <th>Үнэлгээ</th>
-                                            <th>Сэтгэгдэл</th>
+                                            <th>Дүн</th>
                                             <th>Элссэн</th>
                                             <th>Үйлдэл</th>
                                         </tr>
@@ -364,24 +414,76 @@ $recent_evaluations = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                                                     <?php endif; ?>
                                                 </td>
                                                 <td>
-                                                    <?php if ($student['comment']): ?>
-                                                        <?php echo htmlspecialchars($student['comment']); ?>
+                                                    <?php if ($student['grade'] !== null): ?>
+                                                        <span class="badge bg-<?php echo $student['grade'] >= 60 ? 'success' : 'danger'; ?>">
+                                                            <?php echo number_format($student['grade'], 1); ?>
+                                                        </span>
+                                                        <?php if ($student['grade_feedback']): ?>
+                                                            <i class="bi bi-info-circle text-primary ms-1" 
+                                                               data-bs-toggle="tooltip" 
+                                                               title="<?php echo htmlspecialchars($student['grade_feedback']); ?>"></i>
+                                                        <?php endif; ?>
                                                     <?php else: ?>
-                                                        <span class="text-muted">Сэтгэгдэл байхгүй</span>
+                                                        <span class="text-muted">Дүн байхгүй</span>
                                                     <?php endif; ?>
                                                 </td>
-                                                <td><?php echo date('Y-m-d', strtotime($student['enrolled_at'])); ?></td>
                                                 <td>
-                                                    <form action="../courses/unenroll.php" method="POST" class="d-inline">
-                                                        <input type="hidden" name="course_id" value="<?php echo $course['id']; ?>">
-                                                        <input type="hidden" name="student_id" value="<?php echo $student['id']; ?>">
-                                                        <button type="submit" class="btn btn-danger btn-sm" 
-                                                                onclick="return confirm('Энэ оюутныг хичээлээс хасах уу?')">
-                                                            <i class="bi bi-person-dash"></i>
-                                                        </button>
-                                                    </form>
+                                                    <small class="text-muted">
+                                                        <?php echo date('Y-m-d', strtotime($student['enrolled_at'])); ?>
+                                                    </small>
+                                                </td>
+                                                <td>
+                                                    <button type="button" 
+                                                            class="btn btn-sm btn-outline-primary"
+                                                            data-bs-toggle="modal" 
+                                                            data-bs-target="#gradeModal<?php echo $course['id']; ?>_<?php echo $student['id']; ?>">
+                                                        <i class="bi bi-pencil"></i> Дүн
+                                                    </button>
                                                 </td>
                                             </tr>
+
+                                            <!-- Grade Modal -->
+                                            <div class="modal fade" id="gradeModal<?php echo $course['id']; ?>_<?php echo $student['id']; ?>" tabindex="-1">
+                                                <div class="modal-dialog">
+                                                    <div class="modal-content">
+                                                        <div class="modal-header">
+                                                            <h5 class="modal-title">
+                                                                <?php echo htmlspecialchars($student['name']); ?> - Дүн оруулах
+                                                            </h5>
+                                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                                        </div>
+                                                        <form action="../evaluation/view.php" method="POST">
+                                                            <input type="hidden" name="course_id" value="<?php echo $course['id']; ?>">
+                                                            <input type="hidden" name="student_id" value="<?php echo $student['id']; ?>">
+                                                            <div class="modal-body">
+                                                                <div class="mb-3">
+                                                                    <label class="form-label">Дүн</label>
+                                                                    <input type="number" 
+                                                                           class="form-control" 
+                                                                           name="grade" 
+                                                                           min="0" 
+                                                                           max="100" 
+                                                                           step="0.1"
+                                                                           value="<?php echo $student['grade'] ?? ''; ?>"
+                                                                           required>
+                                                                </div>
+                                                                <div class="mb-3">
+                                                                    <label class="form-label">Тайлбар</label>
+                                                                    <textarea class="form-control" 
+                                                                              name="feedback" 
+                                                                              rows="3"><?php echo $student['grade_feedback'] ?? ''; ?></textarea>
+                                                                </div>
+                                                            </div>
+                                                            <div class="modal-footer">
+                                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Болих</button>
+                                                                <button type="submit" class="btn btn-primary">
+                                                                    <i class="bi bi-save me-1"></i>Хадгалах
+                                                                </button>
+                                                            </div>
+                                                        </form>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         <?php endforeach; ?>
                                     </tbody>
                                 </table>
@@ -394,5 +496,12 @@ $recent_evaluations = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     <?php endforeach; ?>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Initialize tooltips
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl)
+        })
+    </script>
 </body>
 </html> 

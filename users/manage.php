@@ -12,50 +12,97 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
 if (isset($_POST['delete_user'])) {
     $user_id = filter_var($_POST['user_id'], FILTER_SANITIZE_NUMBER_INT);
     
-    // Check if this is the last admin
-    $stmt = $conn->prepare("SELECT COUNT(*) as admin_count FROM users WHERE role = 'admin'");
-    $stmt->execute();
-    $admin_count = $stmt->get_result()->fetch_assoc()['admin_count'];
+    // Don't allow deleting yourself
+    if ($user_id == $_SESSION['user_id']) {
+        $_SESSION['error'] = "Өөрийгөө устгах боломжгүй";
+        header("Location: manage.php");
+        exit();
+    }
     
-    if ($admin_count <= 1) {
+    // Check if this is the last admin
+    $stmt = $conn->prepare("
+        SELECT COUNT(*) as admin_count 
+        FROM users 
+        WHERE role = 'admin' AND id != ?
+    ");
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $result = $stmt->get_result()->fetch_assoc();
+    
+    if ($result['admin_count'] == 0) {
         $_SESSION['error'] = "Сүүлчийн админ хэрэглэгчийг устгах боломжгүй";
+        header("Location: manage.php");
+        exit();
+    }
+    
+    // Delete user
+    $stmt = $conn->prepare("DELETE FROM users WHERE id = ?");
+    $stmt->bind_param("i", $user_id);
+    
+    if ($stmt->execute()) {
+        $_SESSION['success'] = "Хэрэглэгч амжилттай устгагдлаа";
     } else {
-        $stmt = $conn->prepare("DELETE FROM users WHERE id = ?");
-        $stmt->bind_param("i", $user_id);
-        if ($stmt->execute()) {
-            $_SESSION['success'] = "Хэрэглэгч амжилттай устгагдлаа";
-        } else {
-            $_SESSION['error'] = "Хэрэглэгчийг устгахад алдаа гарлаа";
-        }
+        $_SESSION['error'] = "Хэрэглэгч устгахад алдаа гарлаа";
     }
     header("Location: manage.php");
     exit();
 }
 
-// Handle role update
-if (isset($_POST['update_role'])) {
+// Handle user update
+if (isset($_POST['update_user'])) {
     $user_id = filter_var($_POST['user_id'], FILTER_SANITIZE_NUMBER_INT);
-    $new_role = filter_var($_POST['new_role'], FILTER_SANITIZE_STRING);
+    $name = filter_var($_POST['name'], FILTER_SANITIZE_STRING);
+    $email = filter_var($_POST['email'], FILTER_SANITIZE_EMAIL);
+    $role = filter_var($_POST['role'], FILTER_SANITIZE_STRING);
+    $password = $_POST['password'] ? password_hash($_POST['password'], PASSWORD_DEFAULT) : null;
     
-    // Check if this is the last admin
-    if ($new_role !== 'admin') {
-        $stmt = $conn->prepare("SELECT COUNT(*) as admin_count FROM users WHERE role = 'admin'");
+    // Validate role
+    if (!in_array($role, ['admin', 'teacher', 'student'])) {
+        $_SESSION['error'] = "Буруу хэрэглэгчийн төрөл";
+        header("Location: manage.php");
+        exit();
+    }
+    
+    // If changing role of last admin, prevent it
+    if ($role !== 'admin') {
+        // First get the current user's role
+        $stmt = $conn->prepare("SELECT role FROM users WHERE id = ?");
+        $stmt->bind_param("i", $user_id);
         $stmt->execute();
-        $admin_count = $stmt->get_result()->fetch_assoc()['admin_count'];
+        $current_role = $stmt->get_result()->fetch_assoc()['role'];
         
-        if ($admin_count <= 1) {
-            $_SESSION['error'] = "Сүүлчийн админ хэрэглэгчийн үүргийг өөрчлөх боломжгүй";
-            header("Location: manage.php");
-            exit();
+        // Then check if this is the last admin
+        if ($current_role === 'admin') {
+            $stmt = $conn->prepare("
+                SELECT COUNT(*) as admin_count 
+                FROM users 
+                WHERE role = 'admin' AND id != ?
+            ");
+            $stmt->bind_param("i", $user_id);
+            $stmt->execute();
+            $other_admins = $stmt->get_result()->fetch_assoc()['admin_count'];
+            
+            if ($other_admins == 0) {
+                $_SESSION['error'] = "Сүүлчийн админ хэрэглэгчийн төрлийг өөрчлөх боломжгүй";
+                header("Location: manage.php");
+                exit();
+            }
         }
     }
     
-    $stmt = $conn->prepare("UPDATE users SET role = ? WHERE id = ?");
-    $stmt->bind_param("si", $new_role, $user_id);
-    if ($stmt->execute()) {
-        $_SESSION['success'] = "Хэрэглэгчийн үүрэг амжилттай шинэчлэгдлээ";
+    // Update user
+    if ($password) {
+        $stmt = $conn->prepare("UPDATE users SET name = ?, email = ?, role = ?, password = ? WHERE id = ?");
+        $stmt->bind_param("ssssi", $name, $email, $role, $password, $user_id);
     } else {
-        $_SESSION['error'] = "Хэрэглэгчийн үүргийг шинэчлэхэд алдаа гарлаа";
+        $stmt = $conn->prepare("UPDATE users SET name = ?, email = ?, role = ? WHERE id = ?");
+        $stmt->bind_param("sssi", $name, $email, $role, $user_id);
+    }
+    
+    if ($stmt->execute()) {
+        $_SESSION['success'] = "Хэрэглэгч амжилттай шинэчлэгдлээ";
+    } else {
+        $_SESSION['error'] = "Хэрэглэгч шинэчлэхэд алдаа гарлаа";
     }
     header("Location: manage.php");
     exit();
@@ -63,9 +110,16 @@ if (isset($_POST['update_role'])) {
 
 // Get all users
 $stmt = $conn->prepare("
-    SELECT id, name, email, role, created_at
-    FROM users
-    ORDER BY created_at DESC
+    SELECT 
+        u.id,
+        u.name,
+        u.email,
+        u.role,
+        u.created_at,
+        (SELECT COUNT(*) FROM courses WHERE teacher_id = u.id) as course_count,
+        (SELECT COUNT(*) FROM course_enrollments WHERE student_id = u.id) as enrolled_courses
+    FROM users u
+    ORDER BY u.created_at DESC
 ");
 $stmt->execute();
 $users = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
@@ -122,16 +176,17 @@ $users = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
         <div class="card shadow-sm">
             <div class="card-header bg-white">
-                <h4 class="mb-0">Хэрэглэгчдийн жагсаалт</h4>
+                <h4 class="mb-0">Хэрэглэгчид</h4>
             </div>
             <div class="card-body">
                 <div class="table-responsive">
-                    <table class="table">
-                        <thead>
+                    <table class="table table-hover">
+                        <thead class="table-light">
                             <tr>
                                 <th>Нэр</th>
-                                <th>Имэйл</th>
-                                <th>Үүрэг</th>
+                                <th>И-мэйл</th>
+                                <th>Төрөл</th>
+                                <th>Хичээл</th>
                                 <th>Бүртгүүлсэн</th>
                                 <th>Үйлдэл</th>
                             </tr>
@@ -139,30 +194,135 @@ $users = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                         <tbody>
                             <?php foreach ($users as $user): ?>
                                 <tr>
-                                    <td><?php echo htmlspecialchars($user['name']); ?></td>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <i class="bi bi-person text-primary me-2"></i>
+                                            <?php echo htmlspecialchars($user['name']); ?>
+                                        </div>
+                                    </td>
                                     <td><?php echo htmlspecialchars($user['email']); ?></td>
                                     <td>
-                                        <form method="POST" action="" class="d-inline">
-                                            <input type="hidden" name="user_id" value="<?php echo $user['id']; ?>">
-                                            <select name="new_role" class="form-select form-select-sm" onchange="this.form.submit()">
-                                                <option value="student" <?php echo $user['role'] === 'student' ? 'selected' : ''; ?>>Оюутан</option>
-                                                <option value="teacher" <?php echo $user['role'] === 'teacher' ? 'selected' : ''; ?>>Багш</option>
-                                                <option value="admin" <?php echo $user['role'] === 'admin' ? 'selected' : ''; ?>>Админ</option>
-                                            </select>
-                                            <input type="hidden" name="update_role" value="1">
-                                        </form>
+                                        <span class="badge bg-<?php 
+                                            echo $user['role'] === 'admin' ? 'danger' : 
+                                                ($user['role'] === 'teacher' ? 'success' : 'primary'); 
+                                        ?>">
+                                            <?php 
+                                            echo $user['role'] === 'admin' ? 'Админ' : 
+                                                ($user['role'] === 'teacher' ? 'Багш' : 'Оюутан'); 
+                                            ?>
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <?php if ($user['role'] === 'teacher'): ?>
+                                            <span class="badge bg-info">
+                                                <i class="bi bi-book me-1"></i>
+                                                <?php echo $user['course_count']; ?> хичээл
+                                            </span>
+                                        <?php elseif ($user['role'] === 'student'): ?>
+                                            <span class="badge bg-info">
+                                                <i class="bi bi-book me-1"></i>
+                                                <?php echo $user['enrolled_courses']; ?> хичээл
+                                            </span>
+                                        <?php endif; ?>
                                     </td>
                                     <td><?php echo date('Y-m-d', strtotime($user['created_at'])); ?></td>
                                     <td>
-                                        <form method="POST" action="" class="d-inline" 
-                                              onsubmit="return confirm('Энэ хэрэглэгчийг устгахдаа итгэлтэй байна уу?');">
-                                            <input type="hidden" name="user_id" value="<?php echo $user['id']; ?>">
-                                            <button type="submit" name="delete_user" class="btn btn-danger btn-sm">
-                                                Устгах
+                                        <div class="btn-group">
+                                            <button type="button" 
+                                                    class="btn btn-primary btn-sm" 
+                                                    data-bs-toggle="modal" 
+                                                    data-bs-target="#editModal<?php echo $user['id']; ?>">
+                                                <i class="bi bi-pencil"></i>
                                             </button>
-                                        </form>
+                                            <?php if ($user['id'] != $_SESSION['user_id']): ?>
+                                                <button type="button" 
+                                                        class="btn btn-danger btn-sm" 
+                                                        data-bs-toggle="modal" 
+                                                        data-bs-target="#deleteModal<?php echo $user['id']; ?>">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            <?php endif; ?>
+                                        </div>
                                     </td>
                                 </tr>
+
+                                <!-- Edit Modal -->
+                                <div class="modal fade" id="editModal<?php echo $user['id']; ?>" tabindex="-1">
+                                    <div class="modal-dialog">
+                                        <div class="modal-content">
+                                            <div class="modal-header">
+                                                <h5 class="modal-title">Хэрэглэгч засварлах</h5>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                            </div>
+                                            <form method="POST" action="">
+                                                <div class="modal-body">
+                                                    <input type="hidden" name="user_id" value="<?php echo $user['id']; ?>">
+                                                    
+                                                    <div class="mb-3">
+                                                        <label for="name<?php echo $user['id']; ?>" class="form-label">Нэр</label>
+                                                        <input type="text" class="form-control" id="name<?php echo $user['id']; ?>" 
+                                                               name="name" value="<?php echo htmlspecialchars($user['name']); ?>" required>
+                                                    </div>
+                                                    
+                                                    <div class="mb-3">
+                                                        <label for="email<?php echo $user['id']; ?>" class="form-label">И-мэйл</label>
+                                                        <input type="email" class="form-control" id="email<?php echo $user['id']; ?>" 
+                                                               name="email" value="<?php echo htmlspecialchars($user['email']); ?>" required>
+                                                    </div>
+                                                    
+                                                    <div class="mb-3">
+                                                        <label for="role<?php echo $user['id']; ?>" class="form-label">Төрөл</label>
+                                                        <select class="form-select" id="role<?php echo $user['id']; ?>" name="role" required>
+                                                            <option value="admin" <?php echo $user['role'] === 'admin' ? 'selected' : ''; ?>>Админ</option>
+                                                            <option value="teacher" <?php echo $user['role'] === 'teacher' ? 'selected' : ''; ?>>Багш</option>
+                                                            <option value="student" <?php echo $user['role'] === 'student' ? 'selected' : ''; ?>>Оюутан</option>
+                                                        </select>
+                                                    </div>
+                                                    
+                                                    <div class="mb-3">
+                                                        <label for="password<?php echo $user['id']; ?>" class="form-label">Шинэ нууц үг (хоосон үлдээх)</label>
+                                                        <input type="password" class="form-control" id="password<?php echo $user['id']; ?>" 
+                                                               name="password" minlength="6">
+                                                    </div>
+                                                </div>
+                                                <div class="modal-footer">
+                                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Цуцлах</button>
+                                                    <button type="submit" name="update_user" class="btn btn-primary">Хадгалах</button>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Delete Modal -->
+                                <?php if ($user['id'] != $_SESSION['user_id']): ?>
+                                    <div class="modal fade" id="deleteModal<?php echo $user['id']; ?>" tabindex="-1">
+                                        <div class="modal-dialog">
+                                            <div class="modal-content">
+                                                <div class="modal-header">
+                                                    <h5 class="modal-title">Хэрэглэгч устгах</h5>
+                                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                                </div>
+                                                <div class="modal-body">
+                                                    <p>Та <?php echo htmlspecialchars($user['name']); ?> хэрэглэгчийг устгахдаа итгэлтэй байна уу?</p>
+                                                    <?php if ($user['role'] === 'admin'): ?>
+                                                        <div class="alert alert-warning">
+                                                            <i class="bi bi-exclamation-triangle"></i>
+                                                            Админ хэрэглэгчийг устгахад болгоомжтой байна уу!
+                                                        </div>
+                                                    <?php endif; ?>
+                                                </div>
+                                                <div class="modal-footer">
+                                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Цуцлах</button>
+                                                    <form method="POST" action="" class="d-inline">
+                                                        <input type="hidden" name="user_id" value="<?php echo $user['id']; ?>">
+                                                        <button type="submit" name="delete_user" class="btn btn-danger">Устгах</button>
+                                                    </form>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                <?php endif; ?>
                             <?php endforeach; ?>
                         </tbody>
                     </table>

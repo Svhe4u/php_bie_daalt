@@ -8,7 +8,7 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'student') {
     exit();
 }
 
-// Get student's enrolled courses with evaluation data
+// Get student's enrolled courses with evaluation and grade data
 $stmt = $conn->prepare("
     SELECT 
         c.id,
@@ -17,11 +17,15 @@ $stmt = $conn->prepare("
         e.score,
         e.comment,
         e.created_at as evaluation_date,
-        ce.enrolled_at
+        ce.enrolled_at,
+        g.grade,
+        g.feedback as grade_feedback,
+        g.updated_at as grade_updated_at
     FROM course_enrollments ce
     JOIN courses c ON ce.course_id = c.id
     JOIN users u ON c.teacher_id = u.id
     LEFT JOIN evaluations e ON e.course_id = c.id AND e.student_id = ce.student_id
+    LEFT JOIN grades g ON g.course_id = c.id AND g.student_id = ce.student_id
     WHERE ce.student_id = ?
     ORDER BY c.name
 ");
@@ -34,10 +38,20 @@ $total_courses = count($courses);
 $evaluated_courses = count(array_filter($courses, function($course) {
     return !is_null($course['score']);
 }));
+$graded_courses = count(array_filter($courses, function($course) {
+    return !is_null($course['grade']);
+}));
+
 $average_score = 0;
 if ($evaluated_courses > 0) {
     $total_score = array_sum(array_column($courses, 'score'));
     $average_score = $total_score / $evaluated_courses;
+}
+
+$average_grade = 0;
+if ($graded_courses > 0) {
+    $total_grade = array_sum(array_column($courses, 'grade'));
+    $average_grade = $total_grade / $graded_courses;
 }
 ?>
 
@@ -96,8 +110,8 @@ if ($evaluated_courses > 0) {
                                         <tr>
                                             <th>Хичээл</th>
                                             <th>Багш</th>
+                                            <th>Дүн</th>
                                             <th>Үнэлгээ</th>
-                                            <th>Сэтгэгдэл</th>
                                             <th>Үйлдэл</th>
                                         </tr>
                                     </thead>
@@ -117,6 +131,28 @@ if ($evaluated_courses > 0) {
                                                     </div>
                                                 </td>
                                                 <td>
+                                                    <?php if ($course['grade'] !== null): ?>
+                                                        <div class="d-flex align-items-center">
+                                                            <span class="badge bg-<?php echo $course['grade'] >= 60 ? 'success' : 'danger'; ?>">
+                                                                <?php echo number_format($course['grade'], 1); ?>
+                                                            </span>
+                                                            <?php if ($course['grade_feedback']): ?>
+                                                                <button type="button" 
+                                                                        class="btn btn-link btn-sm text-muted ms-2 p-0" 
+                                                                        data-bs-toggle="tooltip" 
+                                                                        title="<?php echo htmlspecialchars($course['grade_feedback']); ?>">
+                                                                    <i class="bi bi-info-circle"></i>
+                                                                </button>
+                                                            <?php endif; ?>
+                                                        </div>
+                                                        <small class="text-muted d-block">
+                                                            <?php echo date('Y-m-d', strtotime($course['grade_updated_at'])); ?>
+                                                        </small>
+                                                    <?php else: ?>
+                                                        <span class="text-muted">Дүн байхгүй</span>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td>
                                                     <?php if ($course['score']): ?>
                                                         <div class="rating">
                                                             <?php for ($i = 1; $i <= 5; $i++): ?>
@@ -124,15 +160,16 @@ if ($evaluated_courses > 0) {
                                                             <?php endfor; ?>
                                                             <span class="ms-1"><?php echo $course['score']; ?>/5</span>
                                                         </div>
+                                                        <?php if ($course['comment']): ?>
+                                                            <button type="button" 
+                                                                    class="btn btn-link btn-sm text-muted p-0" 
+                                                                    data-bs-toggle="tooltip" 
+                                                                    title="<?php echo htmlspecialchars($course['comment']); ?>">
+                                                                <i class="bi bi-chat-left-text"></i>
+                                                            </button>
+                                                        <?php endif; ?>
                                                     <?php else: ?>
                                                         <span class="text-muted">Үнэлгээ байхгүй</span>
-                                                    <?php endif; ?>
-                                                </td>
-                                                <td>
-                                                    <?php if ($course['comment']): ?>
-                                                        <?php echo htmlspecialchars($course['comment']); ?>
-                                                    <?php else: ?>
-                                                        <span class="text-muted">Сэтгэгдэл байхгүй</span>
                                                     <?php endif; ?>
                                                 </td>
                                                 <td>
@@ -159,7 +196,7 @@ if ($evaluated_courses > 0) {
             </div>
             
             <div class="col-md-4">
-                <div class="card shadow-sm">
+                <div class="card shadow-sm mb-4">
                     <div class="card-header bg-white">
                         <h4 class="mb-0">Статистик</h4>
                     </div>
@@ -172,12 +209,51 @@ if ($evaluated_courses > 0) {
                             <span>Үнэлсэн хичээл:</span>
                             <span class="fw-bold"><?php echo $evaluated_courses; ?></span>
                         </div>
-                        <div class="d-flex justify-content-between">
-                            <span>Дундаж оноо:</span>
+                        <div class="d-flex justify-content-between mb-3">
+                            <span>Дүн авсан хичээл:</span>
+                            <span class="fw-bold"><?php echo $graded_courses; ?></span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-3">
+                            <span>Дундаж үнэлгээ:</span>
                             <span class="fw-bold">
-                                <?php echo number_format($average_score, 1); ?>/5
+                                <?php if ($average_score > 0): ?>
+                                    <div class="rating">
+                                        <?php for ($i = 1; $i <= 5; $i++): ?>
+                                            <i class="bi bi-star<?php echo $i <= round($average_score) ? '-fill' : ''; ?> text-warning"></i>
+                                        <?php endfor; ?>
+                                        <span class="ms-1"><?php echo number_format($average_score, 1); ?>/5</span>
+                                    </div>
+                                <?php else: ?>
+                                    <span class="text-muted">Үнэлгээ байхгүй</span>
+                                <?php endif; ?>
                             </span>
                         </div>
+                        <div class="d-flex justify-content-between">
+                            <span>Дундаж дүн:</span>
+                            <span class="fw-bold">
+                                <?php if ($average_grade > 0): ?>
+                                    <span class="badge bg-<?php echo $average_grade >= 60 ? 'success' : 'danger'; ?>">
+                                        <?php echo number_format($average_grade, 1); ?>
+                                    </span>
+                                <?php else: ?>
+                                    <span class="text-muted">Дүн байхгүй</span>
+                                <?php endif; ?>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card shadow-sm">
+                    <div class="card-header bg-white">
+                        <h4 class="mb-0">Хичээл элсэх</h4>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted mb-3">
+                            Шинэ хичээлд элсэхийн тулд багш эсвэл админтай холбоо барина уу.
+                        </p>
+                        <a href="../courses/list.php" class="btn btn-outline-primary w-100">
+                            <i class="bi bi-search me-2"></i>Хичээлүүдийг харах
+                        </a>
                     </div>
                 </div>
             </div>
@@ -185,5 +261,12 @@ if ($evaluated_courses > 0) {
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+    // Initialize tooltips
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl)
+    })
+    </script>
 </body>
 </html> 

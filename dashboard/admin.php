@@ -75,7 +75,7 @@ $stmt = $conn->prepare("
 $stmt->execute();
 $users = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
-// Get all courses with evaluation statistics
+// Get all courses with evaluation and grade statistics
 $stmt = $conn->prepare("
     SELECT 
         c.id,
@@ -85,7 +85,9 @@ $stmt = $conn->prepare("
         c.created_at,
         (SELECT COUNT(*) FROM course_enrollments WHERE course_id = c.id) as student_count,
         (SELECT COUNT(*) FROM evaluations WHERE course_id = c.id) as total_evaluations,
-        (SELECT AVG(score) FROM evaluations WHERE course_id = c.id) as average_score
+        (SELECT AVG(score) FROM evaluations WHERE course_id = c.id) as average_score,
+        (SELECT COUNT(*) FROM grades WHERE course_id = c.id) as graded_count,
+        (SELECT AVG(grade) FROM grades WHERE course_id = c.id) as average_grade
     FROM courses c
     JOIN users u ON c.teacher_id = u.id
     GROUP BY c.id
@@ -111,7 +113,9 @@ $stmt = $conn->prepare("
         (SELECT COUNT(*) FROM users WHERE role = 'teacher') as total_teachers,
         (SELECT COUNT(*) FROM courses) as total_courses,
         (SELECT COUNT(*) FROM evaluations) as total_evaluations,
-        (SELECT AVG(score) FROM evaluations) as average_score
+        (SELECT AVG(score) FROM evaluations) as average_score,
+        (SELECT COUNT(*) FROM grades) as total_grades,
+        (SELECT AVG(grade) FROM grades) as average_grade
 ");
 $stmt->execute();
 $stats = $stmt->get_result()->fetch_assoc();
@@ -209,8 +213,48 @@ $students = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
             <div class="col-md-3">
                 <div class="card bg-warning text-white">
                     <div class="card-body">
-                        <h5 class="card-title">Дундаж үнэлгээ</h5>
-                        <h2 class="mb-0"><?php echo number_format($stats['average_score'], 1); ?>/5</h2>
+                        <h5 class="card-title">Дундаж дүн</h5>
+                        <h2 class="mb-0">
+                            <?php if ($stats['total_grades'] > 0): ?>
+                                <?php echo number_format($stats['average_grade'], 1); ?>
+                                <small class="fs-6">(<?php echo $stats['total_grades']; ?>)</small>
+                            <?php else: ?>
+                                -
+                            <?php endif; ?>
+                        </h2>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card bg-primary text-white">
+                    <div class="card-body">
+                        <h5 class="card-title">Нийт үнэлгээ</h5>
+                        <h2 class="mb-0">
+                            <?php echo $stats['total_evaluations']; ?>
+                            <?php if ($stats['total_evaluations'] > 0): ?>
+                                <small class="fs-6">
+                                    (<?php echo number_format($stats['average_score'], 1); ?>/5)
+                                </small>
+                            <?php endif; ?>
+                        </h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card bg-success text-white">
+                    <div class="card-body">
+                        <h5 class="card-title">Нийт дүн</h5>
+                        <h2 class="mb-0">
+                            <?php echo $stats['total_grades']; ?>
+                            <?php if ($stats['total_grades'] > 0): ?>
+                                <small class="fs-6">
+                                    (<?php echo number_format($stats['average_grade'], 1); ?> дундаж)
+                                </small>
+                            <?php endif; ?>
+                        </h2>
                     </div>
                 </div>
             </div>
@@ -317,6 +361,7 @@ $students = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                                             <th>Оюутны тоо</th>
                                             <th>Үнэлгээ</th>
                                             <th>Дундаж оноо</th>
+                                            <th>Дүн</th>
                                             <th>Үйлдэл</th>
                                         </tr>
                                     </thead>
@@ -337,21 +382,30 @@ $students = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                                                     </span>
                                                 </td>
                                                 <td>
-                                                    <span class="badge bg-primary">
-                                                        <i class="bi bi-star me-1"></i>
-                                                        <?php echo $course['total_evaluations']; ?> үнэлгээ
-                                                    </span>
-                                                </td>
-                                                <td>
-                                                    <?php if ($course['average_score']): ?>
+                                                    <?php if ($course['total_evaluations'] > 0): ?>
                                                         <div class="rating">
                                                             <?php for ($i = 1; $i <= 5; $i++): ?>
                                                                 <i class="bi bi-star<?php echo $i <= round($course['average_score']) ? '-fill' : ''; ?> text-warning"></i>
                                                             <?php endfor; ?>
                                                             <span class="ms-1"><?php echo number_format($course['average_score'], 1); ?>/5</span>
+                                                            <small class="text-muted">
+                                                                (<?php echo $course['total_evaluations']; ?>)
+                                                            </small>
                                                         </div>
                                                     <?php else: ?>
                                                         <span class="text-muted">Үнэлгээ байхгүй</span>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td>
+                                                    <?php if ($course['graded_count'] > 0): ?>
+                                                        <span class="badge bg-<?php echo $course['average_grade'] >= 60 ? 'success' : 'danger'; ?>">
+                                                            <?php echo number_format($course['average_grade'], 1); ?>
+                                                        </span>
+                                                        <small class="text-muted ms-1">
+                                                            (<?php echo $course['graded_count']; ?>)
+                                                        </small>
+                                                    <?php else: ?>
+                                                        <span class="text-muted">Дүн байхгүй</span>
                                                     <?php endif; ?>
                                                 </td>
                                                 <td>
