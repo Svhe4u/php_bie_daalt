@@ -42,12 +42,6 @@ $graded_courses = count(array_filter($courses, function($course) {
     return !is_null($course['grade']);
 }));
 
-$average_score = 0;
-if ($evaluated_courses > 0) {
-    $total_score = array_sum(array_column($courses, 'score'));
-    $average_score = $total_score / $evaluated_courses;
-}
-
 $average_grade = 0;
 if ($graded_courses > 0) {
     $total_grade = array_sum(array_column($courses, 'grade'));
@@ -212,21 +206,6 @@ if ($graded_courses > 0) {
                         <div class="d-flex justify-content-between mb-3">
                             <span>Дүн авсан хичээл:</span>
                             <span class="fw-bold"><?php echo $graded_courses; ?></span>
-                        </div>
-                        <div class="d-flex justify-content-between mb-3">
-                            <span>Дундаж үнэлгээ:</span>
-                            <span class="fw-bold">
-                                <?php if ($average_score > 0): ?>
-                                    <div class="rating">
-                                        <?php for ($i = 1; $i <= 5; $i++): ?>
-                                            <i class="bi bi-star<?php echo $i <= round($average_score) ? '-fill' : ''; ?> text-warning"></i>
-                                        <?php endfor; ?>
-                                        <span class="ms-1"><?php echo number_format($average_score, 1); ?>/5</span>
-                                    </div>
-                                <?php else: ?>
-                                    <span class="text-muted">Үнэлгээ байхгүй</span>
-                                <?php endif; ?>
-                            </span>
                         </div>
                         <div class="d-flex justify-content-between">
                             <span>Дундаж дүн:</span>

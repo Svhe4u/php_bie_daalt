@@ -105,8 +105,143 @@ $recent_grades = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     </nav>
 
     <div class="container mt-4">
+        <?php
+        // Get students who haven't received grades
+        $stmt = $conn->prepare("
+            SELECT 
+                c.id as course_id,
+                c.name as course_name,
+                COUNT(DISTINCT ce.student_id) as ungraded_count
+            FROM courses c
+            JOIN course_enrollments ce ON c.id = ce.course_id
+            LEFT JOIN grades g ON g.course_id = ce.course_id AND g.student_id = ce.student_id
+            WHERE c.teacher_id = ? AND g.id IS NULL
+            GROUP BY c.id
+            HAVING ungraded_count > 0
+        ");
+        $stmt->bind_param("i", $_SESSION['user_id']);
+        $stmt->execute();
+        $ungraded_courses = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+
+        if (!empty($ungraded_courses)): ?>
+            <div class="alert alert-warning mb-4">
+                <div class="d-flex align-items-center">
+                    <i class="bi bi-exclamation-triangle-fill fs-4 me-2"></i>
+                    <div>
+                        <h5 class="alert-heading mb-1">Дүн оруулаагүй оюутнууд байна!</h5>
+                        <p class="mb-0">Дараах хичээлүүдэд дүн оруулаагүй оюутнууд байна:</p>
+                        <ul class="mb-0 mt-2">
+                            <?php foreach ($ungraded_courses as $course): ?>
+                                <li>
+                                    <a href="../evaluation/view.php?course_id=<?php echo $course['course_id']; ?>" 
+                                       class="alert-link">
+                                        <?php echo htmlspecialchars($course['course_name']); ?>
+                                        <span class="badge bg-warning text-dark ms-2">
+                                            <?php echo $course['ungraded_count']; ?> оюутан
+                                        </span>
+                                    </a>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        <?php endif; ?>
+
         <div class="row">
             <div class="col-md-8">
+                <!-- Enrollment Requests Card -->
+                <div class="card shadow-sm mb-4">
+                    <div class="card-header bg-white">
+                        <h4 class="mb-0">Элсэх хүсэлтүүд</h4>
+                    </div>
+                    <div class="card-body">
+                        <?php
+                        // Get pending enrollment requests
+                        $stmt = $conn->prepare("
+                            SELECT 
+                                er.id as request_id,
+                                er.created_at as requested_at,
+                                c.id as course_id,
+                                c.name as course_name,
+                                u.id as student_id,
+                                u.name as student_name,
+                                u.email as student_email
+                            FROM enrollment_requests er
+                            JOIN courses c ON er.course_id = c.id
+                            JOIN users u ON er.student_id = u.id
+                            WHERE c.teacher_id = ? AND er.status = 'pending'
+                            ORDER BY er.created_at DESC
+                        ");
+                        $stmt->bind_param("i", $_SESSION['user_id']);
+                        $stmt->execute();
+                        $requests = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+                        ?>
+
+                        <?php if (empty($requests)): ?>
+                            <div class="text-center py-4">
+                                <div class="text-muted">
+                                    <i class="bi bi-inbox fs-4 d-block mb-2"></i>
+                                    Хүсэлт байхгүй байна
+                                </div>
+                            </div>
+                        <?php else: ?>
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Хичээл</th>
+                                            <th>Оюутан</th>
+                                            <th>И-мэйл</th>
+                                            <th>Хүсэлт</th>
+                                            <th>Үйлдэл</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($requests as $request): ?>
+                                            <tr>
+                                                <td>
+                                                    <div class="d-flex align-items-center">
+                                                        <i class="bi bi-book text-primary me-2"></i>
+                                                        <?php echo htmlspecialchars($request['course_name']); ?>
+                                                    </div>
+                                                </td>
+                                                <td><?php echo htmlspecialchars($request['student_name']); ?></td>
+                                                <td><?php echo htmlspecialchars($request['student_email']); ?></td>
+                                                <td>
+                                                    <small class="text-muted">
+                                                        <?php echo date('Y-m-d H:i', strtotime($request['requested_at'])); ?>
+                                                    </small>
+                                                </td>
+                                                <td>
+                                                    <div class="btn-group">
+                                                        <form action="../courses/handle_request.php" method="POST" class="d-inline">
+                                                            <input type="hidden" name="request_id" value="<?php echo $request['request_id']; ?>">
+                                                            <input type="hidden" name="course_id" value="<?php echo $request['course_id']; ?>">
+                                                            <input type="hidden" name="student_id" value="<?php echo $request['student_id']; ?>">
+                                                            <input type="hidden" name="action" value="approve">
+                                                            <button type="submit" class="btn btn-success btn-sm">
+                                                                <i class="bi bi-check-lg"></i> Зөвшөөрөх
+                                                            </button>
+                                                        </form>
+                                                        <form action="../courses/handle_request.php" method="POST" class="d-inline ms-1">
+                                                            <input type="hidden" name="request_id" value="<?php echo $request['request_id']; ?>">
+                                                            <input type="hidden" name="action" value="reject">
+                                                            <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Энэ хүсэлтийг татгалзах уу?')">
+                                                                <i class="bi bi-x-lg"></i> Татгалзах
+                                                            </button>
+                                                        </form>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
                 <div class="card shadow-sm mb-4">
                     <div class="card-header bg-white">
                         <h4 class="mb-0">Миний хичээлүүд</h4>
@@ -286,13 +421,6 @@ $recent_grades = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                         $total_evaluations = array_sum(array_column($courses, 'total_evaluations'));
                         $total_grades = array_sum(array_column($courses, 'graded_count'));
                         
-                        $avg_score = 0;
-                        if ($total_evaluations > 0) {
-                            $avg_score = array_sum(array_map(function($course) {
-                                return $course['average_score'] * $course['total_evaluations'];
-                            }, $courses)) / $total_evaluations;
-                        }
-                        
                         $avg_grade = 0;
                         if ($total_grades > 0) {
                             $avg_grade = array_sum(array_map(function($course) {
@@ -315,12 +443,6 @@ $recent_grades = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                         <div class="d-flex justify-content-between mb-3">
                             <span>Нийт дүн:</span>
                             <span class="fw-bold"><?php echo $total_grades; ?></span>
-                        </div>
-                        <div class="d-flex justify-content-between mb-3">
-                            <span>Дундаж үнэлгээ:</span>
-                            <span class="fw-bold">
-                                <?php echo number_format($avg_score, 1); ?>/5
-                            </span>
                         </div>
                         <div class="d-flex justify-content-between">
                             <span>Дундаж дүн:</span>
@@ -433,12 +555,21 @@ $recent_grades = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                                                     </small>
                                                 </td>
                                                 <td>
-                                                    <button type="button" 
-                                                            class="btn btn-sm btn-outline-primary"
-                                                            data-bs-toggle="modal" 
-                                                            data-bs-target="#gradeModal<?php echo $course['id']; ?>_<?php echo $student['id']; ?>">
-                                                        <i class="bi bi-pencil"></i> Дүн
-                                                    </button>
+                                                    <div class="btn-group">
+                                                        <button type="button" 
+                                                                class="btn btn-sm btn-outline-primary"
+                                                                data-bs-toggle="modal" 
+                                                                data-bs-target="#gradeModal<?php echo $course['id']; ?>_<?php echo $student['id']; ?>">
+                                                            <i class="bi bi-pencil"></i> Дүн
+                                                        </button>
+                                                        <form action="../courses/unenroll.php" method="POST" class="d-inline" onsubmit="return confirm('Энэ оюутныг хичээлээс хасах уу?');">
+                                                            <input type="hidden" name="course_id" value="<?php echo $course['id']; ?>">
+                                                            <input type="hidden" name="student_id" value="<?php echo $student['id']; ?>">
+                                                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                                                                <i class="bi bi-person-dash"></i> Хасах
+                                                            </button>
+                                                        </form>
+                                                    </div>
                                                 </td>
                                             </tr>
 

@@ -47,17 +47,30 @@ if ($stmt->get_result()->num_rows > 0) {
     exit();
 }
 
-// Create enrollment
+// Check if there's already a pending request
 $stmt = $conn->prepare("
-    INSERT INTO course_enrollments (course_id, student_id) 
+    SELECT id FROM enrollment_requests 
+    WHERE course_id = ? AND student_id = ? AND status = 'pending'
+");
+$stmt->bind_param("ii", $course_id, $_SESSION['user_id']);
+$stmt->execute();
+if ($stmt->get_result()->num_rows > 0) {
+    $_SESSION['error'] = "Та энэ хичээлд элсэх хүсэлт илгээсэн байна.";
+    header("Location: list.php");
+    exit();
+}
+
+// Create enrollment request
+$stmt = $conn->prepare("
+    INSERT INTO enrollment_requests (course_id, student_id) 
     VALUES (?, ?)
 ");
 $stmt->bind_param("ii", $course_id, $_SESSION['user_id']);
 
 if ($stmt->execute()) {
-    $_SESSION['success'] = "Хичээлд амжилттай элслээ.";
+    $_SESSION['success'] = "Хичээлд элсэх хүсэлт амжилттай илгээгдлээ. Багш таны хүсэлтийг хянаж, батлах болно.";
 } else {
-    $_SESSION['error'] = "Хичээлд элсэхэд алдаа гарлаа. Дараа дахин оролдоно уу.";
+    $_SESSION['error'] = "Хүсэлт илгээхэд алдаа гарлаа. Дараа дахин оролдоно уу.";
 }
 
 header("Location: list.php");

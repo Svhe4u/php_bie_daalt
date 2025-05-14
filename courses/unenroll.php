@@ -20,25 +20,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $course = $stmt->get_result()->fetch_assoc();
 
         if ($course && $course['teacher_id'] == $_SESSION['user_id']) {
-            // Remove student's evaluation if exists
-            $stmt = $conn->prepare("
-                DELETE FROM evaluations 
-                WHERE course_id = ? AND student_id = ?
-            ");
-            $stmt->bind_param("ii", $course_id, $student_id);
-            $stmt->execute();
+            // Start transaction
+            $conn->begin_transaction();
 
-            // Unenroll student
-            $stmt = $conn->prepare("
-                DELETE FROM course_enrollments 
-                WHERE course_id = ? AND student_id = ?
-            ");
-            $stmt->bind_param("ii", $course_id, $student_id);
-            
-            if ($stmt->execute()) {
+            try {
+                // Remove student's evaluation if exists
+                $stmt = $conn->prepare("DELETE FROM evaluations WHERE course_id = ? AND student_id = ?");
+                $stmt->bind_param("ii", $course_id, $student_id);
+                $stmt->execute();
+
+                // Remove student's grade if exists
+                $stmt = $conn->prepare("DELETE FROM grades WHERE course_id = ? AND student_id = ?");
+                $stmt->bind_param("ii", $course_id, $student_id);
+                $stmt->execute();
+
+                // Remove student from course
+                $stmt = $conn->prepare("DELETE FROM course_enrollments WHERE course_id = ? AND student_id = ?");
+                $stmt->bind_param("ii", $course_id, $student_id);
+                $stmt->execute();
+
+                // Commit transaction
+                $conn->commit();
                 $_SESSION['success'] = "Оюутан амжилттай хасагдлаа.";
-            } else {
-                $_SESSION['error'] = "Оюутныг хасахад алдаа гарлаа.";
+            } catch (Exception $e) {
+                // Rollback transaction on error
+                $conn->rollback();
+                $_SESSION['error'] = "Оюутныг хасахад алдаа гарлаа: " . $e->getMessage();
             }
         } else {
             $_SESSION['error'] = "Та энэ хичээлийн багш биш байна.";

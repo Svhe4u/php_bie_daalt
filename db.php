@@ -1,7 +1,7 @@
 <?php
 $host = "localhost";
 $user = "root";  // AMMPS default user
-$pass = "mysql";      // AMMPS default password is empty
+$pass = "";      // AMMPS default password is empty
 $dbname = "student_feedback";
 
 $conn = new mysqli($host, $user, $pass, $dbname);
@@ -48,6 +48,31 @@ $tables = [
         FOREIGN KEY (student_id) REFERENCES users(id),
         FOREIGN KEY (course_id) REFERENCES courses(id),
         UNIQUE KEY unique_enrollment (student_id, course_id)
+    )",
+
+    "CREATE TABLE IF NOT EXISTS grades (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        course_id INT NOT NULL,
+        student_id INT NOT NULL,
+        grade DECIMAL(5,2) NOT NULL,
+        feedback TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
+        FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE KEY unique_course_student (course_id, student_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+
+    "CREATE TABLE IF NOT EXISTS enrollment_requests (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        course_id INT NOT NULL,
+        student_id INT NOT NULL,
+        status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
+        FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE KEY unique_request (course_id, student_id)
     )"
 ];
 
