@@ -361,7 +361,7 @@ $students = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                                             <th>Оюутны тоо</th>
                                             <th>Үнэлгээ</th>
                                             <th>Дундаж оноо</th>
-                                            <th>Дүн</th>
+                                            <th>Бүртгэсэн огноо</th>
                                             <th>Үйлдэл</th>
                                         </tr>
                                     </thead>
@@ -407,6 +407,12 @@ $students = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                                                     <?php else: ?>
                                                         <span class="text-muted">Дүн байхгүй</span>
                                                     <?php endif; ?>
+                                                </td>
+                                                <td>
+                                                    <span class="text-muted">
+                                                        <i class="bi bi-calendar me-1"></i>
+                                                        <?php echo date('Y-m-d', strtotime($course['created_at'])); ?>
+                                                    </span>
                                                 </td>
                                                 <td>
                                                     <div class="btn-group">
@@ -559,7 +565,7 @@ $students = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
                             
                             <div class="collapse mt-3" id="addStudentForm<?php echo $course['id']; ?>">
                                 <div class="card card-body">
-                                    <form action="../courses/enroll.php" method="POST">
+                                    <form action="../courses/admin_enroll.php" method="POST">
                                         <input type="hidden" name="course_id" value="<?php echo $course['id']; ?>">
                                         <div class="mb-3">
                                             <label for="student_id" class="form-label">Оюутан сонгох</label>

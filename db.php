@@ -1,7 +1,7 @@
 <?php
 $host = "localhost";
 $user = "root";  // AMMPS default user
-$pass = "";      // AMMPS default password is empty
+$pass = "mysql";      // AMMPS default password is empty
 $dbname = "student_feedback";
 
 $conn = new mysqli($host, $user, $pass, $dbname);
@@ -66,7 +66,7 @@ if ($result->num_rows === 0) {
     // Create default admin user
     $admin_name = "System Administrator";
     $admin_email = "admin@system.com";
-    $admin_password = password_hash("admin123", PASSWORD_DEFAULT);
+    $admin_password = password_hash("Admin123!", PASSWORD_DEFAULT);
     $admin_role = "admin";
     
     $stmt = $conn->prepare("INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)");
