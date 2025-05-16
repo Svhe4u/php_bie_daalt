@@ -73,6 +73,16 @@ $tables = [
         FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
         FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
         UNIQUE KEY unique_request (course_id, student_id)
+    )",
+
+    "CREATE TABLE IF NOT EXISTS teacher_settings (
+        user_id INT PRIMARY KEY,
+        office_hours TEXT,
+        notification_preferences JSON,
+        availability JSON,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )"
 ];
 

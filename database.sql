@@ -62,15 +62,17 @@ CREATE TABLE IF NOT EXISTS grades (
 -- Create announcements table
 CREATE TABLE IF NOT EXISTS announcements (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    course_id INT NOT NULL,
     title VARCHAR(255) NOT NULL,
     content TEXT NOT NULL,
     author_id INT NOT NULL,
     target_role ENUM('student', 'teacher', 'all') NOT NULL DEFAULT 'all',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
     FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
--- Create assignments table (for course assignments)
+-- Create assignments table
 CREATE TABLE IF NOT EXISTS assignments (
     id INT AUTO_INCREMENT PRIMARY KEY,
     course_id INT NOT NULL,
@@ -81,7 +83,7 @@ CREATE TABLE IF NOT EXISTS assignments (
     FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
 );
 
--- Create assignment_submissions table (for student submissions)
+-- Create assignment_submissions table
 CREATE TABLE IF NOT EXISTS assignment_submissions (
     id INT AUTO_INCREMENT PRIMARY KEY,
     assignment_id INT NOT NULL,
@@ -96,7 +98,7 @@ CREATE TABLE IF NOT EXISTS assignment_submissions (
     UNIQUE KEY (assignment_id, student_id)
 );
 
--- Create attendance table (for tracking student attendance)
+-- Create attendance table
 CREATE TABLE IF NOT EXISTS attendance (
     id INT AUTO_INCREMENT PRIMARY KEY,
     course_id INT NOT NULL,
@@ -109,7 +111,7 @@ CREATE TABLE IF NOT EXISTS attendance (
     UNIQUE KEY (course_id, student_id, date)
 );
 
--- Create materials table (for lecture notes, slides, etc.)
+-- Create materials table
 CREATE TABLE IF NOT EXISTS materials (
     id INT AUTO_INCREMENT PRIMARY KEY,
     course_id INT NOT NULL,
@@ -120,62 +122,42 @@ CREATE TABLE IF NOT EXISTS materials (
     FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
 );
 
--- Create schedule table (for class schedule, lectures, exams, meetings)
-CREATE TABLE IF NOT EXISTS schedule (
+-- Create course_schedule table
+CREATE TABLE IF NOT EXISTS course_schedule (
     id INT AUTO_INCREMENT PRIMARY KEY,
     course_id INT NOT NULL,
-    title VARCHAR(255) NOT NULL,
-    start_time TIMESTAMP NOT NULL,
-    end_time TIMESTAMP NOT NULL,
-    type ENUM('lecture', 'exam', 'meeting') NOT NULL,
+    day_of_week ENUM('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday') NOT NULL,
+    start_time TIME NOT NULL,
+    end_time TIME NOT NULL,
+    room VARCHAR(50),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
 );
 
--- Create messages table (for communication between teachers and students)
+-- Create messages table
 CREATE TABLE IF NOT EXISTS messages (
     id INT AUTO_INCREMENT PRIMARY KEY,
     sender_id INT NOT NULL,
     receiver_id INT NOT NULL,
-    subject VARCHAR(255) NOT NULL,
-    body TEXT NOT NULL,
-    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    course_id INT,
+    subject VARCHAR(255),
+    content TEXT NOT NULL,
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (receiver_id) REFERENCES users(id) ON DELETE CASCADE
+    FOREIGN KEY (receiver_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE SET NULL
 );
 
--- Create message_replies table (for replies to messages)
-CREATE TABLE IF NOT EXISTS message_replies (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    message_id INT NOT NULL,
-    sender_id INT NOT NULL,
-    body TEXT NOT NULL,
-    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
-    FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
--- Create discussions table (for discussion board topics)
-CREATE TABLE IF NOT EXISTS discussions (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    course_id INT NOT NULL,
-    title VARCHAR(255) NOT NULL,
-    body TEXT NOT NULL,
-    author_id INT NOT NULL,
+-- Create teacher_settings table
+CREATE TABLE IF NOT EXISTS teacher_settings (
+    user_id INT PRIMARY KEY,
+    office_hours TEXT,
+    notification_preferences JSON,
+    availability JSON,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
-    FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
--- Create feedback table (for feedback forms or surveys)
-CREATE TABLE IF NOT EXISTS feedback (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    course_id INT NOT NULL,
-    student_id INT NOT NULL,
-    feedback TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
-    FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
-    UNIQUE KEY (course_id, student_id)
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- Insert default admin user (password: admin123)
@@ -226,4 +208,62 @@ INSERT INTO evaluations (course_id, student_id, score, comment) VALUES
 (3, 6, 4, 'Хичээл сайн байсан, гэхдээ илүү практик дасгал хэрэгтэй.'),
 (4, 4, 5, 'JavaScript-ийн үндсэн ойлголтуудыг маш сайн тайлбарласан.'),
 (4, 5, 4, 'Хичээл сайн байсан, гэхдээ илүү практик дасгал хэрэгтэй.')
+ON DUPLICATE KEY UPDATE id = id;
+
+-- Insert sample grades
+INSERT INTO grades (course_id, student_id, grade, feedback) VALUES
+(1, 4, 95.5, 'Маш сайн ажил. Бүх даалгавруудыг зөв гүйцэтгэсэн.'),
+(1, 5, 88.0, 'Сайн ажил. Зарим даалгаварт алдаа гарсан.'),
+(2, 4, 92.5, 'Өгөгдлийн сангийн үндсэн ойлголтуудыг маш сайн эзэмшсэн.'),
+(2, 6, 75.0, 'Дундаж дүн. Илүү их дадлага хийх хэрэгтэй.'),
+(3, 5, 90.0, 'HTML/CSS-ийн үндсэн ойлголтуудыг сайн эзэмшсэн.'),
+(3, 6, 85.5, 'Сайн ажил. Зарим CSS загваруудыг сайжруулах хэрэгтэй.'),
+(4, 4, 94.0, 'JavaScript-ийн үндсэн ойлголтуудыг маш сайн эзэмшсэн.'),
+(4, 5, 89.5, 'Сайн ажил. Зарим функцүүдийг илүү сайн ашиглах хэрэгтэй.')
+ON DUPLICATE KEY UPDATE id = id;
+
+-- Insert sample announcements
+INSERT INTO announcements (course_id, title, content, author_id, target_role) VALUES
+(1, 'PHP хичээлийн анхны мэдэгдэл', 'Энэ долоо хоногт PHP хичээлийн анхны хичээл болно. Бэлтгэлээ хийгээрэй.', 2, 'all'),
+(2, 'MySQL хичээлийн мэдэгдэл', 'MySQL хичээлийн дараагийн хичээл дээр практик дасгал хийх болно.', 2, 'all'),
+(3, 'HTML/CSS хичээлийн мэдэгдэл', 'HTML/CSS хичээлийн дараагийн хичээл дээр responsive design-ийн талаар судлах болно.', 3, 'all'),
+(4, 'JavaScript хичээлийн мэдэгдэл', 'JavaScript хичээлийн дараагийн хичээл дээр DOM manipulation-ийн талаар судлах болно.', 3, 'all')
+ON DUPLICATE KEY UPDATE id = id;
+
+-- Insert sample assignments
+INSERT INTO assignments (course_id, title, description, due_date) VALUES
+(1, 'PHP анхны даалгавар', 'PHP-ийн үндсэн синтакс, хувьсагч, операторуудыг ашиглан энгийн тооцоолуур хийх.', DATE_ADD(NOW(), INTERVAL 7 DAY)),
+(1, 'PHP функц даалгавар', 'PHP функцүүдийг ашиглан тооны факториал, фибоначчийн тоонуудыг тооцоолох.', DATE_ADD(NOW(), INTERVAL 14 DAY)),
+(2, 'MySQL анхны даалгавар', 'MySQL-ийн үндсэн командуудыг ашиглан энгийн өгөгдлийн сан үүсгэх.', DATE_ADD(NOW(), INTERVAL 7 DAY)),
+(2, 'MySQL JOIN даалгавар', 'MySQL JOIN командуудыг ашиглан өгөгдлийн сангийн хүснэгтүүдийг холбох.', DATE_ADD(NOW(), INTERVAL 14 DAY)),
+(3, 'HTML анхны даалгавар', 'HTML тегүүдийг ашиглан энгийн вэб хуудас хийх.', DATE_ADD(NOW(), INTERVAL 7 DAY)),
+(3, 'CSS даалгавар', 'CSS ашиглан вэб хуудсыг загварчлах.', DATE_ADD(NOW(), INTERVAL 14 DAY)),
+(4, 'JavaScript анхны даалгавар', 'JavaScript-ийн үндсэн синтакс, хувьсагч, операторуудыг ашиглан энгийн тооцоолуур хийх.', DATE_ADD(NOW(), INTERVAL 7 DAY)),
+(4, 'JavaScript DOM даалгавар', 'JavaScript DOM API ашиглан вэб хуудсыг динамикаар өөрчлөх.', DATE_ADD(NOW(), INTERVAL 14 DAY))
+ON DUPLICATE KEY UPDATE id = id;
+
+-- Insert sample course schedules
+INSERT INTO course_schedule (course_id, day_of_week, start_time, end_time, room) VALUES
+(1, 'Monday', '09:00:00', '10:30:00', 'Room 101'),
+(1, 'Wednesday', '09:00:00', '10:30:00', 'Room 101'),
+(2, 'Tuesday', '13:00:00', '14:30:00', 'Room 102'),
+(2, 'Thursday', '13:00:00', '14:30:00', 'Room 102'),
+(3, 'Monday', '13:00:00', '14:30:00', 'Room 103'),
+(3, 'Wednesday', '13:00:00', '14:30:00', 'Room 103'),
+(4, 'Tuesday', '09:00:00', '10:30:00', 'Room 104'),
+(4, 'Thursday', '09:00:00', '10:30:00', 'Room 104')
+ON DUPLICATE KEY UPDATE id = id;
+
+-- Insert sample teacher settings
+INSERT INTO teacher_settings (user_id, office_hours, notification_preferences, availability) VALUES
+(2, 'Monday, Wednesday 14:00-16:00', '{"email": true, "sms": false}', '{"monday": true, "tuesday": true, "wednesday": true, "thursday": true, "friday": true}'),
+(3, 'Tuesday, Thursday 14:00-16:00', '{"email": true, "sms": true}', '{"monday": true, "tuesday": true, "wednesday": true, "thursday": true, "friday": true}')
+ON DUPLICATE KEY UPDATE user_id = user_id;
+
+-- Insert sample messages
+INSERT INTO messages (sender_id, receiver_id, course_id, subject, content) VALUES
+(4, 2, 1, 'PHP даалгаврын тухай', 'Багш аа, PHP даалгаврын тухай асуух зүйл байна.'),
+(2, 4, 1, 'Re: PHP даалгаврын тухай', 'Тиймээ, асуух зүйлээ бичнэ үү.'),
+(5, 3, 3, 'HTML/CSS даалгаврын тухай', 'Багш аа, HTML/CSS даалгаврын тухай асуух зүйл байна.'),
+(3, 5, 3, 'Re: HTML/CSS даалгаврын тухай', 'Тиймээ, асуух зүйлээ бичнэ үү.')
 ON DUPLICATE KEY UPDATE id = id; 
