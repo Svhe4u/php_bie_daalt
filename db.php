@@ -24,6 +24,7 @@ $tables = [
     "CREATE TABLE IF NOT EXISTS courses (
         id INT AUTO_INCREMENT PRIMARY KEY,
         name VARCHAR(100) NOT NULL,
+        description TEXT,
         teacher_id INT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (teacher_id) REFERENCES users(id)
@@ -44,6 +45,7 @@ $tables = [
         id INT PRIMARY KEY AUTO_INCREMENT,
         student_id INT,
         course_id INT,
+        status ENUM('pending', 'approved', 'rejected') DEFAULT 'approved',
         enrolled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (student_id) REFERENCES users(id),
         FOREIGN KEY (course_id) REFERENCES courses(id),
@@ -83,7 +85,69 @@ $tables = [
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    )"
+    )",
+
+    "CREATE TABLE IF NOT EXISTS materials (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        course_id INT NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        description TEXT,
+        type ENUM('lecture', 'assignment', 'resource') NOT NULL,
+        file_path VARCHAR(255),
+        created_by INT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
+        FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+
+    "CREATE TABLE IF NOT EXISTS assignments (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        course_id INT NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        description TEXT,
+        due_date DATETIME NOT NULL,
+        max_score INT NOT NULL DEFAULT 100,
+        allow_late TINYINT(1) NOT NULL DEFAULT 0,
+        file_path VARCHAR(255),
+        created_by INT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
+        FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+
+    "CREATE TABLE IF NOT EXISTS assignment_submissions (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        assignment_id INT NOT NULL,
+        student_id INT NOT NULL,
+        file_path VARCHAR(255) NOT NULL,
+        submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        status ENUM('pending', 'graded', 'returned') NOT NULL DEFAULT 'pending',
+        score INT,
+        feedback TEXT,
+        graded_by INT,
+        graded_at TIMESTAMP NULL,
+        FOREIGN KEY (assignment_id) REFERENCES assignments(id) ON DELETE CASCADE,
+        FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (graded_by) REFERENCES users(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+
+    "CREATE TABLE IF NOT EXISTS schedule (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        course_id INT NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        description TEXT,
+        start_time DATETIME NOT NULL,
+        end_time DATETIME NOT NULL,
+        location VARCHAR(255),
+        type ENUM('lecture', 'exam', 'assignment', 'other') NOT NULL,
+        teacher_id INT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
+        FOREIGN KEY (teacher_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
 ];
 
 foreach ($tables as $sql) {

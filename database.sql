@@ -118,8 +118,11 @@ CREATE TABLE IF NOT EXISTS materials (
     title VARCHAR(255) NOT NULL,
     description TEXT,
     file_path VARCHAR(255) NOT NULL,
+    file_type VARCHAR(50),
+    created_by INT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
+    FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- Create course_schedule table
@@ -266,4 +269,9 @@ INSERT INTO messages (sender_id, receiver_id, course_id, subject, content) VALUE
 (2, 4, 1, 'Re: PHP даалгаврын тухай', 'Тиймээ, асуух зүйлээ бичнэ үү.'),
 (5, 3, 3, 'HTML/CSS даалгаврын тухай', 'Багш аа, HTML/CSS даалгаврын тухай асуух зүйл байна.'),
 (3, 5, 3, 'Re: HTML/CSS даалгаврын тухай', 'Тиймээ, асуух зүйлээ бичнэ үү.')
-ON DUPLICATE KEY UPDATE id = id; 
+ON DUPLICATE KEY UPDATE id = id;
+
+-- Update materials table to add created_by column
+ALTER TABLE materials
+ADD COLUMN created_by INT NOT NULL AFTER file_type,
+ADD FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE; 

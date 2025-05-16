@@ -1,4 +1,6 @@
 <?php
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 session_start();
 require_once '../db.php';
 
@@ -19,34 +21,33 @@ $stmt->bind_param("i", $_SESSION['user_id']);
 $stmt->execute();
 $profile = $stmt->get_result()->fetch_assoc();
 
-// Get teacher's courses with evaluation and grade statistics
+// Get all courses for this teacher
 $stmt = $conn->prepare("
-    SELECT 
-        c.id,
-        c.name,
-        u.name as teacher_name,
-        c.created_at,
-        (SELECT COUNT(*) FROM course_enrollments WHERE course_id = c.id) as student_count,
-        (SELECT COUNT(*) FROM evaluations WHERE course_id = c.id) as total_evaluations,
-        (SELECT AVG(score) FROM evaluations WHERE course_id = c.id) as average_score,
-        (SELECT COUNT(*) FROM grades WHERE course_id = c.id) as graded_count,
-        (SELECT AVG(grade) FROM grades WHERE course_id = c.id) as average_grade,
-        (SELECT COUNT(*) FROM assignments WHERE course_id = c.id) as total_assignments,
-        (SELECT COUNT(*) FROM assignment_submissions a 
-         JOIN assignments ass ON a.assignment_id = ass.id 
-         WHERE ass.course_id = c.id AND a.status = 'pending') as pending_submissions
+    SELECT c.*, 
+           COUNT(DISTINCT ce.student_id) as enrolled_students,
+           COUNT(DISTINCT a.id) as total_assignments,
+           COUNT(DISTINCT m.id) as total_materials,
+           (SELECT AVG(score) FROM evaluations WHERE course_id = c.id) as average_score,
+           (SELECT AVG(grade) FROM grades WHERE course_id = c.id) as average_grade,
+           (SELECT COUNT(*) FROM evaluations WHERE course_id = c.id) as total_evaluations,
+           (SELECT COUNT(*) FROM grades WHERE course_id = c.id) as graded_count,
+           (SELECT COUNT(*) FROM assignment_submissions a 
+            JOIN assignments ass ON a.assignment_id = ass.id 
+            WHERE ass.course_id = c.id AND a.status = 'pending') as pending_submissions
     FROM courses c
-    JOIN users u ON c.teacher_id = u.id
+    LEFT JOIN course_enrollments ce ON c.id = ce.course_id
+    LEFT JOIN assignments a ON c.id = a.course_id
+    LEFT JOIN materials m ON c.id = m.course_id
     WHERE c.teacher_id = ?
     GROUP BY c.id
-    ORDER BY c.name
+    ORDER BY c.created_at DESC
 ");
 $stmt->bind_param("i", $_SESSION['user_id']);
 $stmt->execute();
 $courses = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
 // Get upcoming classes for the next 7 days
-$upcoming_classes_query = "
+$stmt = $conn->prepare("
     SELECT cs.*, c.name as course_name, c.id as course_id,
            (SELECT COUNT(*) FROM course_enrollments WHERE course_id = c.id) as student_count
     FROM course_schedule cs
@@ -70,11 +71,15 @@ $upcoming_classes_query = "
         DAYNAME(DATE_ADD(CURRENT_DATE, INTERVAL 5 DAY)),
         DAYNAME(DATE_ADD(CURRENT_DATE, INTERVAL 6 DAY))
     ), cs.start_time ASC
-    LIMIT 7";
-$stmt = $conn->prepare($upcoming_classes_query);
+    LIMIT 7
+");
 $stmt->bind_param("i", $_SESSION['user_id']);
 $stmt->execute();
-$upcoming_classes = $stmt->get_result();
+$upcoming_classes_result = $stmt->get_result();
+$upcoming_classes = [];
+while ($row = $upcoming_classes_result->fetch_assoc()) {
+    $upcoming_classes[] = $row;
+}
 
 // Get pending tasks
 $stmt = $conn->prepare("
@@ -151,14 +156,14 @@ $messages = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
 // Calculate statistics
 $total_courses = count($courses);
-$total_students = array_sum(array_column($courses, 'student_count'));
+$total_students = array_sum(array_column($courses, 'enrolled_students'));
 $total_assignments = array_sum(array_column($courses, 'total_assignments'));
 $total_pending = array_sum(array_column($courses, 'pending_submissions'));
 $total_evaluations = array_sum(array_column($courses, 'total_evaluations'));
 
 $average_score = 0;
 $evaluated_courses = array_filter($courses, function($course) {
-    return !is_null($course['average_score']);
+    return isset($course['average_score']) && $course['average_score'] !== null && $course['average_score'] > 0;
 });
 if (count($evaluated_courses) > 0) {
     $average_score = array_sum(array_column($evaluated_courses, 'average_score')) / count($evaluated_courses);
@@ -166,12 +171,11 @@ if (count($evaluated_courses) > 0) {
 
 $average_grade = 0;
 $graded_courses = array_filter($courses, function($course) {
-    return !is_null($course['average_grade']);
+    return isset($course['average_grade']) && $course['average_grade'] !== null && $course['average_grade'] > 0;
 });
 if (count($graded_courses) > 0) {
     $average_grade = array_sum(array_column($graded_courses, 'average_grade')) / count($graded_courses);
 }
-
 ?>
 
 <!DOCTYPE html>
@@ -187,24 +191,58 @@ if (count($graded_courses) > 0) {
     <style>
         .stat-card {
             transition: transform 0.2s;
+            border: none;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            height: 100%;
         }
         .stat-card:hover {
             transform: translateY(-5px);
         }
         .calendar-container {
             height: 600px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .card {
+            border: none;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 1.5rem;
+        }
+        .card-header {
+            background: white;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+            border-radius: 10px 10px 0 0 !important;
+            padding: 1rem;
+        }
+        .table th {
+            border-top: none;
+            font-weight: 600;
+        }
+        .badge {
+            padding: 0.5em 0.8em;
+            font-weight: 500;
+        }
+        .rating {
+            display: inline-flex;
+            align-items: center;
+        }
+        .rating i {
+            margin-right: 2px;
         }
         .task-item {
             border-left: 4px solid #4b6cb7;
-            padding-left: 1rem;
+            padding: 1rem;
             margin-bottom: 1rem;
+            background: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
         }
-        .task-item.assignment {
-            border-left-color: #28a745;
-        }
-        .task-item.enrollment {
-            border-left-color: #ffc107;
-        }
+        .task-item.assignment { border-left-color: #28a745; }
+        .task-item.enrollment { border-left-color: #ffc107; }
+        .task-item.feedback { border-left-color: #17a2b8; }
     </style>
 </head>
 <body class="bg-light">
@@ -233,8 +271,7 @@ if (count($graded_courses) > 0) {
         </div>
     </nav>
 
-    <div class="container py-4">
-        <!-- Quick Stats -->
+    <div class="container mt-4">
         <div class="row mb-4">
             <div class="col-md-3">
                 <div class="card stat-card bg-primary text-white">
@@ -255,36 +292,90 @@ if (count($graded_courses) > 0) {
             <div class="col-md-3">
                 <div class="card stat-card bg-info text-white">
                     <div class="card-body">
-                        <h5 class="card-title">Нийт даалгавар</h5>
-                        <h2 class="mb-0"><?php echo $total_assignments; ?></h2>
+                        <h5 class="card-title">Дундаж үнэлгээ</h5>
+                        <h2 class="mb-0"><?php echo number_format($average_score, 1); ?></h2>
+                        <p class="mb-0 mt-2">
+                            <i class="bi bi-star me-1"></i>
+                            /5 оноо
+                        </p>
                     </div>
                 </div>
             </div>
             <div class="col-md-3">
                 <div class="card stat-card bg-warning text-white">
                     <div class="card-body">
-                        <h5 class="card-title">Хүлээгдэж буй</h5>
-                        <h2 class="mb-0"><?php echo $total_pending; ?></h2>
+                        <h5 class="card-title">Дундаж дүн</h5>
+                        <h2 class="mb-0"><?php echo number_format($average_grade, 1); ?></h2>
+                        <p class="mb-0 mt-2">
+                            <i class="bi bi-graph-up me-1"></i>
+                            /100 оноо
+                        </p>
                     </div>
                 </div>
             </div>
         </div>
 
         <div class="row">
-            <!-- Main Content -->
             <div class="col-md-8">
-                <!-- Course List -->
+                <!-- Pending Tasks -->
+                <div class="card shadow-sm mb-4">
+                    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                        <h4 class="mb-0">Хүлээгдэж буй даалгавар</h4>
+                    </div>
+                    <div class="card-body">
+                        <?php if (empty($pending_tasks)): ?>
+                            <div class="text-center py-4">
+                                <div class="text-muted">
+                                    <i class="bi bi-check-circle fs-4 d-block mb-2"></i>
+                                    Хүлээгдэж буй даалгавар байхгүй байна
+                                </div>
+                            </div>
+                        <?php else: ?>
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Гарчиг</th>
+                                            <th>Хичээл</th>
+                                            <th>Дуусах огноо</th>
+                                            <th>Төрөл</th>
+                                            <th>Үйлдэл</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($pending_tasks as $task): ?>
+                                            <tr>
+                                                <td><?php echo htmlspecialchars($task['title']); ?></td>
+                                                <td><?php echo htmlspecialchars($task['course_name']); ?></td>
+                                                <td><?php echo date('Y-m-d', strtotime($task['due_date'])); ?></td>
+                                                <td>
+                                                    <span class="badge bg-<?php echo $task['type'] === 'assignment' ? 'success' : 'warning'; ?>">
+                                                        <?php echo $task['type'] === 'assignment' ? 'Даалгавар' : 'Бүртгэл'; ?>
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <?php if ($task['type'] === 'assignment'): ?>
+                                                        <a href="grade.php?assignment_id=<?php echo $task['id']; ?>" class="btn btn-primary btn-sm">Шалгах</a>
+                                                    <?php else: ?>
+                                                        <a href="enrollments.php?request_id=<?php echo $task['id']; ?>" class="btn btn-warning btn-sm">Шалгах</a>
+                                                    <?php endif; ?>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <!-- Course Management Table -->
                 <div class="card shadow-sm mb-4">
                     <div class="card-header bg-white d-flex justify-content-between align-items-center">
                         <h4 class="mb-0">Миний хичээлүүд</h4>
-                        <div>
-                            <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addCourseModal">
-                                <i class="bi bi-plus-circle"></i> Шинэ хичээл
-                            </button>
-                            <a href="courses.php" class="btn btn-outline-primary btn-sm ms-2">
-                                <i class="bi bi-grid"></i> Бүгдийг харах
-                            </a>
-                        </div>
+                        <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addCourseModal">
+                            <i class="bi bi-plus-circle"></i> Шинэ хичээл
+                        </button>
                     </div>
                     <div class="card-body">
                         <?php if (empty($courses)): ?>
@@ -301,6 +392,8 @@ if (count($graded_courses) > 0) {
                                         <tr>
                                             <th>Хичээл</th>
                                             <th>Оюутны тоо</th>
+                                            <th>Даалгавар</th>
+                                            <th>Хүлээгдэж буй</th>
                                             <th>Үнэлгээ</th>
                                             <th>Дүн</th>
                                             <th>Үйлдэл</th>
@@ -318,7 +411,17 @@ if (count($graded_courses) > 0) {
                                                 <td>
                                                     <span class="badge bg-info">
                                                         <i class="bi bi-people me-1"></i>
-                                                        <?php echo $course['student_count']; ?>
+                                                        <?php echo $course['enrolled_students']; ?>
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <span class="badge bg-success">
+                                                        <?php echo $course['total_assignments']; ?>
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <span class="badge bg-warning">
+                                                        <?php echo $course['pending_submissions']; ?>
                                                     </span>
                                                 </td>
                                                 <td>
@@ -345,23 +448,25 @@ if (count($graded_courses) > 0) {
                                                 <td>
                                                     <div class="btn-group">
                                                         <a href="course.php?id=<?php echo $course['id']; ?>" 
-                                                           class="btn btn-primary btn-sm">
+                                                           class="btn btn-primary btn-sm" title="Харах">
                                                             <i class="bi bi-eye"></i>
                                                         </a>
                                                         <button type="button" 
                                                                 class="btn btn-info btn-sm" 
                                                                 data-bs-toggle="modal" 
-                                                                data-bs-target="#studentsModal<?php echo $course['id']; ?>">
+                                                                data-bs-target="#studentsModal<?php echo $course['id']; ?>"
+                                                                title="Оюутнууд">
                                                             <i class="bi bi-people"></i>
                                                         </button>
-                                                        <a href="materials.php?course_id=<?php echo $course['id']; ?>" 
-                                                           class="btn btn-success btn-sm">
+                                                        <a href="../materials/list.php?course_id=<?php echo $course['id']; ?>" 
+                                                           class="btn btn-success btn-sm" title="Материал">
                                                             <i class="bi bi-file-earmark"></i>
                                                         </a>
                                                         <button type="button" 
                                                                 class="btn btn-warning btn-sm" 
                                                                 data-bs-toggle="modal" 
-                                                                data-bs-target="#editModal<?php echo $course['id']; ?>">
+                                                                data-bs-target="#editModal<?php echo $course['id']; ?>"
+                                                                title="Засах">
                                                             <i class="bi bi-pencil"></i>
                                                         </button>
                                                     </div>
@@ -375,63 +480,10 @@ if (count($graded_courses) > 0) {
                     </div>
                 </div>
 
-                <!-- Statistics Section -->
-                <div class="card shadow-sm mb-4">
-                    <div class="card-header bg-white">
-                        <h4 class="mb-0">Статистик</h4>
-                    </div>
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between mb-3">
-                            <span>Нийт хичээл:</span>
-                            <span class="fw-bold"><?php echo $total_courses; ?></span>
-                        </div>
-                        <div class="d-flex justify-content-between mb-3">
-                            <span>Нийт оюутан:</span>
-                            <span class="fw-bold"><?php echo $total_students; ?></span>
-                        </div>
-                        <div class="d-flex justify-content-between mb-3">
-                            <span>Нийт даалгавар:</span>
-                            <span class="fw-bold"><?php echo $total_assignments; ?></span>
-                        </div>
-                        <div class="d-flex justify-content-between mb-3">
-                            <span>Хүлээгдэж буй:</span>
-                            <span class="fw-bold"><?php echo $total_pending; ?></span>
-                        </div>
-                        <div class="d-flex justify-content-between mb-3">
-                            <span>Нийт үнэлгээ:</span>
-                            <span class="fw-bold"><?php echo $total_evaluations; ?></span>
-                        </div>
-                        <div class="d-flex justify-content-between mb-3">
-                            <span>Дундаж үнэлгээ:</span>
-                            <span class="fw-bold">
-                                <?php if ($average_score > 0): ?>
-                                    <span class="badge bg-<?php echo $average_score >= 3 ? 'success' : 'warning'; ?>">
-                                        <?php echo number_format($average_score, 1); ?>/5
-                                    </span>
-                                <?php else: ?>
-                                    <span class="text-muted">Үнэлгээ байхгүй</span>
-                                <?php endif; ?>
-                            </span>
-                        </div>
-                        <div class="d-flex justify-content-between">
-                            <span>Дундаж дүн:</span>
-                            <span class="fw-bold">
-                                <?php if ($average_grade > 0): ?>
-                                    <span class="badge bg-<?php echo $average_grade >= 60 ? 'success' : 'danger'; ?>">
-                                        <?php echo number_format($average_grade, 1); ?>
-                                    </span>
-                                <?php else: ?>
-                                    <span class="text-muted">Дүн байхгүй</span>
-                                <?php endif; ?>
-                            </span>
-                        </div>
-                    </div>
-                </div>
-
                 <!-- Calendar -->
                 <div class="card shadow-sm mb-4">
-                    <div class="card-header bg-white">
-                        <h4 class="mb-0">Хичээлийн хуваарь</h4>
+                    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                        <h4 class="mb-0">Хичээлийн хуваарь (Календарь)</h4>
                     </div>
                     <div class="card-body">
                         <div id="calendar" class="calendar-container"></div>
@@ -441,64 +493,62 @@ if (count($graded_courses) > 0) {
 
             <!-- Sidebar -->
             <div class="col-md-4">
-                <!-- Announcements -->
+                <!-- Upcoming Classes -->
                 <div class="card shadow-sm mb-4">
                     <div class="card-header bg-white">
-                        <h5 class="mb-0">Мэдэгдлүүд</h5>
+                        <h4 class="mb-0">Удахгүй болох хичээлүүд</h4>
                     </div>
                     <div class="card-body">
-                        <?php if (empty($announcements)): ?>
-                            <div class="text-center py-3">
-                                <div class="text-muted">
-                                    <i class="bi bi-megaphone fs-4 d-block mb-2"></i>
-                                    Мэдэгдэл байхгүй байна
-                                </div>
-                            </div>
+                        <?php if (empty($upcoming_classes)): ?>
+                            <p class="text-muted mb-0">No upcoming classes scheduled.</p>
                         <?php else: ?>
-                            <?php foreach ($announcements as $announcement): ?>
-                                <div class="mb-3 pb-3 border-bottom">
-                                    <h6 class="mb-1"><?php echo htmlspecialchars($announcement['title']); ?></h6>
-                                    <p class="mb-1 small"><?php echo htmlspecialchars($announcement['content']); ?></p>
-                                    <small class="text-muted">
-                                        <i class="bi bi-book me-1"></i><?php echo htmlspecialchars($announcement['course_name']); ?> - 
-                                        <?php echo htmlspecialchars($announcement['author_name']); ?> - 
-                                        <?php echo date('Y-m-d', strtotime($announcement['created_at'])); ?>
-                                    </small>
-                                </div>
-                            <?php endforeach; ?>
+                            <div class="list-group list-group-flush">
+                                <?php foreach ($upcoming_classes as $class): ?>
+                                    <div class="list-group-item">
+                                        <div class="d-flex w-100 justify-content-between">
+                                            <h6 class="mb-1"><?php echo htmlspecialchars($class['course_name']); ?></h6>
+                                            <small><?php echo htmlspecialchars($class['day_of_week']); ?></small>
+                                        </div>
+                                        <p class="mb-1">
+                                            <i class="bi bi-clock me-2"></i><?php echo htmlspecialchars($class['start_time']); ?> - <?php echo htmlspecialchars($class['end_time']); ?>
+                                            <br>
+                                            <i class="bi bi-door-open me-2"></i><?php echo htmlspecialchars($class['room']); ?>
+                                            <br>
+                                            <i class="bi bi-people me-2"></i><?php echo $class['student_count']; ?> оюутан
+                                        </p>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
                         <?php endif; ?>
                     </div>
                 </div>
 
-                <!-- Messages -->
-                <div class="card shadow-sm">
-                    <div class="card-header bg-white">
-                        <h5 class="mb-0">Мессэжүүд</h5>
+                <!-- Announcements -->
+                <div class="card shadow-sm mb-4">
+                    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                        <h4 class="mb-0">Сүүлийн зарлалууд</h4>
+                        <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addAnnouncementModal">
+                            <i class="bi bi-plus-circle"></i> Шинэ
+                        </button>
                     </div>
                     <div class="card-body">
-                        <?php if (empty($messages)): ?>
-                            <div class="text-center py-3">
+                        <?php if (empty($announcements)): ?>
+                            <div class="text-center py-4">
                                 <div class="text-muted">
-                                    <i class="bi bi-envelope fs-4 d-block mb-2"></i>
-                                    Мессэж байхгүй байна
+                                    <i class="bi bi-megaphone fs-4 d-block mb-2"></i>
+                                    Зарлал байхгүй байна
                                 </div>
                             </div>
                         <?php else: ?>
-                            <?php foreach ($messages as $message): ?>
-                                <div class="mb-3 pb-3 border-bottom">
-                                    <div class="d-flex justify-content-between align-items-start">
-                                        <div>
-                                            <h6 class="mb-1"><?php echo htmlspecialchars($message['sender_name']); ?></h6>
-                                            <p class="mb-1 small"><?php echo htmlspecialchars($message['content']); ?></p>
-                                            <small class="text-muted">
-                                                <i class="bi bi-book me-1"></i><?php echo htmlspecialchars($message['course_name']); ?> - 
-                                                <?php echo date('Y-m-d', strtotime($message['created_at'])); ?>
-                                            </small>
-                                        </div>
-                                        <?php if (!$message['is_read']): ?>
-                                            <span class="badge bg-primary">Шинэ</span>
-                                        <?php endif; ?>
-                                    </div>
+                            <?php foreach ($announcements as $announcement): ?>
+                                <div class="mb-3">
+                                    <h6 class="mb-1"><?php echo htmlspecialchars($announcement['title']); ?></h6>
+                                    <p class="mb-1"><?php echo htmlspecialchars($announcement['content']); ?></p>
+                                    <small class="text-muted">
+                                        <?php echo htmlspecialchars($announcement['course_name']); ?> - 
+                                        <?php echo htmlspecialchars($announcement['author_name']); ?> - 
+                                        <?php echo date('Y-m-d', strtotime($announcement['created_at'])); ?>
+                                    </small>
                                 </div>
                             <?php endforeach; ?>
                         <?php endif; ?>
@@ -536,6 +586,53 @@ if (count($graded_courses) > 0) {
         </div>
     </div>
 
+    <!-- Add Announcement Modal -->
+    <div class="modal fade" id="addAnnouncementModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Шинэ мэдэгдэл</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <form action="add_announcement.php" method="POST">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="course_id" class="form-label">Хичээл</label>
+                            <select class="form-select" id="course_id" name="course_id" required>
+                                <option value="">Сонгох...</option>
+                                <?php foreach ($courses as $course): ?>
+                                    <option value="<?php echo $course['id']; ?>">
+                                        <?php echo htmlspecialchars($course['name']); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="title" class="form-label">Гарчиг</label>
+                            <input type="text" class="form-control" id="title" name="title" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="content" class="form-label">Агуулга</label>
+                            <textarea class="form-control" id="content" name="content" rows="3" required></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label for="target_role" class="form-label">Хүлээн авагч</label>
+                            <select class="form-select" id="target_role" name="target_role" required>
+                                <option value="all">Бүгд</option>
+                                <option value="student">Оюутнууд</option>
+                                <option value="teacher">Багш нар</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Болих</button>
+                        <button type="submit" class="btn btn-primary">Нэмэх</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- Edit Course Modal -->
     <?php foreach ($courses as $course): ?>
     <div class="modal fade" id="editModal<?php echo $course['id']; ?>" tabindex="-1">
@@ -552,11 +649,6 @@ if (count($graded_courses) > 0) {
                             <label for="name<?php echo $course['id']; ?>" class="form-label">Хичээлийн нэр</label>
                             <input type="text" class="form-control" id="name<?php echo $course['id']; ?>" 
                                    name="name" value="<?php echo htmlspecialchars($course['name']); ?>" required>
-                        </div>
-                        <div class="mb-3">
-                            <label for="description<?php echo $course['id']; ?>" class="form-label">Тайлбар</label>
-                            <textarea class="form-control" id="description<?php echo $course['id']; ?>" 
-                                      name="description" rows="3"><?php echo htmlspecialchars($course['description'] ?? ''); ?></textarea>
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -669,24 +761,84 @@ if (count($graded_courses) > 0) {
                                             <td>
                                                 <div class="btn-group">
                                                     <a href="student.php?id=<?php echo $student['id']; ?>&course_id=<?php echo $course['id']; ?>" 
-                                                       class="btn btn-primary btn-sm">
+                                                       class="btn btn-primary btn-sm" title="Харах">
                                                         <i class="bi bi-eye"></i>
                                                     </a>
                                                     <button type="button" 
                                                             class="btn btn-warning btn-sm" 
                                                             data-bs-toggle="modal" 
-                                                            data-bs-target="#gradeModal<?php echo $course['id']; ?>_<?php echo $student['id']; ?>">
+                                                            data-bs-target="#gradeModal<?php echo $course['id']; ?>_<?php echo $student['id']; ?>"
+                                                            title="Дүн оруулах">
                                                         <i class="bi bi-pencil"></i>
                                                     </button>
                                                     <button type="button" 
                                                             class="btn btn-info btn-sm" 
                                                             data-bs-toggle="modal" 
-                                                            data-bs-target="#messageModal<?php echo $course['id']; ?>_<?php echo $student['id']; ?>">
+                                                            data-bs-target="#messageModal<?php echo $course['id']; ?>_<?php echo $student['id']; ?>"
+                                                            title="Мессэж илгээх">
                                                         <i class="bi bi-envelope"></i>
                                                     </button>
                                                 </div>
                                             </td>
                                         </tr>
+
+                                        <!-- Grade Modal -->
+                                        <div class="modal fade" id="gradeModal<?php echo $course['id']; ?>_<?php echo $student['id']; ?>" tabindex="-1">
+                                            <div class="modal-dialog">
+                                                <div class="modal-content">
+                                                    <div class="modal-header">
+                                                        <h5 class="modal-title">Дүн оруулах</h5>
+                                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                                    </div>
+                                                    <form action="update_grade.php" method="POST">
+                                                        <input type="hidden" name="course_id" value="<?php echo $course['id']; ?>">
+                                                        <input type="hidden" name="student_id" value="<?php echo $student['id']; ?>">
+                                                        <div class="modal-body">
+                                                            <div class="mb-3">
+                                                                <label for="grade" class="form-label">Дүн</label>
+                                                                <input type="number" class="form-control" id="grade" name="grade" 
+                                                                       min="0" max="100" step="0.1" 
+                                                                       value="<?php echo $student['grade'] ?? ''; ?>" required>
+                                                            </div>
+                                                            <div class="mb-3">
+                                                                <label for="feedback" class="form-label">Санал хүсэлт</label>
+                                                                <textarea class="form-control" id="feedback" name="feedback" rows="3"><?php echo $student['grade_feedback'] ?? ''; ?></textarea>
+                                                            </div>
+                                                        </div>
+                                                        <div class="modal-footer">
+                                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Болих</button>
+                                                            <button type="submit" class="btn btn-primary">Хадгалах</button>
+                                                        </div>
+                                                    </form>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Message Modal -->
+                                        <div class="modal fade" id="messageModal<?php echo $course['id']; ?>_<?php echo $student['id']; ?>" tabindex="-1">
+                                            <div class="modal-dialog">
+                                                <div class="modal-content">
+                                                    <div class="modal-header">
+                                                        <h5 class="modal-title">Мессэж илгээх</h5>
+                                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                                    </div>
+                                                    <form action="send_message.php" method="POST">
+                                                        <input type="hidden" name="receiver_id" value="<?php echo $student['id']; ?>">
+                                                        <input type="hidden" name="course_id" value="<?php echo $course['id']; ?>">
+                                                        <div class="modal-body">
+                                                            <div class="mb-3">
+                                                                <label for="content" class="form-label">Мессэж</label>
+                                                                <textarea class="form-control" id="content" name="content" rows="4" required></textarea>
+                                                            </div>
+                                                        </div>
+                                                        <div class="modal-footer">
+                                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Болих</button>
+                                                            <button type="submit" class="btn btn-primary">Илгээх</button>
+                                                        </div>
+                                                    </form>
+                                                </div>
+                                            </div>
+                                        </div>
                                     <?php endforeach; ?>
                                 </tbody>
                             </table>
@@ -700,47 +852,63 @@ if (count($graded_courses) > 0) {
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/locales/mn.js"></script>
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            var calendarEl = document.getElementById('calendar');
-            var calendar = new FullCalendar.Calendar(calendarEl, {
-                initialView: 'timeGridWeek',
-                headerToolbar: {
-                    left: 'prev,next today',
-                    center: 'title',
-                    right: 'dayGridMonth,timeGridWeek,timeGridDay'
-                },
-                locale: 'mn',
-                slotMinTime: '08:00:00',
-                slotMaxTime: '20:00:00',
-                allDaySlot: false,
-                height: 'auto',
-                events: [
-                    <?php 
-                    while ($class = $upcoming_classes->fetch_assoc()) {
-                        $start_time = date('H:i:s', strtotime($class['start_time']));
-                        $end_time = date('H:i:s', strtotime($class['end_time']));
-                        echo "{
-                            title: '" . addslashes($class['course_name']) . "',
-                            daysOfWeek: [" . (array_search($class['day_of_week'], ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']) + 1) . "],
-                            startTime: '" . $start_time . "',
-                            endTime: '" . $end_time . "',
-                            url: 'course.php?id=" . $class['course_id'] . "',
-                            backgroundColor: '#4b6cb7',
-                            borderColor: '#4b6cb7'
-                        },";
-                    }
-                    ?>
-                ],
-                eventClick: function(info) {
-                    if (info.event.url) {
-                        window.location.href = info.event.url;
-                        return false;
-                    }
+    document.addEventListener('DOMContentLoaded', function() {
+        var calendarEl = document.getElementById('calendar');
+        var calendar = new FullCalendar.Calendar(calendarEl, {
+            initialView: 'dayGridMonth',
+            headerToolbar: {
+                left: 'prev,next today',
+                center: 'title',
+                right: 'dayGridMonth,timeGridWeek,timeGridDay'
+            },
+            locale: 'mn',
+            height: '600px',
+            events: [
+                <?php
+                // Fetch all schedules for this teacher's courses
+                $stmt = $conn->prepare("
+                    SELECT cs.*, c.name as course_name
+                    FROM course_schedule cs
+                    JOIN courses c ON cs.course_id = c.id
+                    WHERE c.teacher_id = ?
+                ");
+                $stmt->bind_param("i", $_SESSION['user_id']);
+                $stmt->execute();
+                $all_schedules = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+
+                // Map day_of_week to numeric (0=Sunday, 1=Monday, ...)
+                $day_map = [
+                    'Sunday' => 0, 'Monday' => 1, 'Tuesday' => 2, 'Wednesday' => 3,
+                    'Thursday' => 4, 'Friday' => 5, 'Saturday' => 6
+                ];
+
+                echo "{ title: 'Test Event', start: '2024-06-10T10:00:00', end: '2024-06-10T11:00:00', color: '#ff0000' },";
+
+                foreach ($all_schedules as $class) {
+                    // Find the next date for this day_of_week
+                    $dow = $day_map[$class['day_of_week']];
+                    echo "{
+                        title: '" . addslashes($class['course_name']) . " (" . addslashes($class['room']) . ")',
+                        daysOfWeek: [$dow],
+                        startTime: '" . $class['start_time'] . "',
+                        endTime: '" . $class['end_time'] . "',
+                        color: '#4b6cb7',
+                        url: 'course.php?id=" . $class['course_id'] . "'
+                    },";
                 }
-            });
-            calendar.render();
+                ?>
+            ],
+            eventClick: function(info) {
+                info.jsEvent.preventDefault();
+                if (info.event.url) {
+                    window.location.href = info.event.url;
+                }
+            }
         });
+        calendar.render();
+    });
     </script>
 </body>
 </html> 

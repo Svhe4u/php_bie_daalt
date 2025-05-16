@@ -504,6 +504,16 @@ $stats = $stmt->get_result()->fetch_assoc();
                             <input type="datetime-local" class="form-control" id="due_date" name="due_date" required>
                         </div>
                         <div class="mb-3">
+                            <label for="max_score" class="form-label">Нийт оноо</label>
+                            <input type="number" class="form-control" id="max_score" name="max_score" value="100" min="1" max="100" required>
+                        </div>
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input type="checkbox" class="form-check-input" id="allow_late" name="allow_late">
+                                <label class="form-check-label" for="allow_late">Хоцорч илгээхийг зөвшөөрөх</label>
+                            </div>
+                        </div>
+                        <div class="mb-3">
                             <label for="file" class="form-label">Файл</label>
                             <input type="file" class="form-control" id="file" name="file">
                         </div>
