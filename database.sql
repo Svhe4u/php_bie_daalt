@@ -4,13 +4,21 @@ USE student_feedback;
 
 -- Create users table
 CREATE TABLE IF NOT EXISTS users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    email VARCHAR(255) NOT NULL UNIQUE,
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
     password VARCHAR(255) NOT NULL,
     role ENUM('admin', 'teacher', 'student') NOT NULL,
+    profile_picture VARCHAR(255),
+    phone_number VARCHAR(20),
+    description TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Add missing columns to users table if they don't exist
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS phone_number VARCHAR(20) AFTER profile_picture,
+ADD COLUMN IF NOT EXISTS description TEXT AFTER phone_number;
 
 -- Create courses table
 CREATE TABLE IF NOT EXISTS courses (
@@ -78,7 +86,7 @@ CREATE TABLE IF NOT EXISTS assignments (
     course_id INT NOT NULL,
     title VARCHAR(255) NOT NULL,
     description TEXT NOT NULL,
-    due_date TIMESTAMP NOT NULL,
+    due_date TIMESTAMP NOT NULL,    
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
 );
@@ -104,10 +112,12 @@ CREATE TABLE IF NOT EXISTS attendance (
     course_id INT NOT NULL,
     student_id INT NOT NULL,
     date TIMESTAMP NOT NULL,
-    status ENUM('present', 'absent', 'late') NOT NULL,
+    status ENUM('present', 'absent', 'late', 'excused') NOT NULL,
     note TEXT,
+    recorded_by INT NOT NULL,
     FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
     FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (recorded_by) REFERENCES users(id) ON DELETE CASCADE,
     UNIQUE KEY (course_id, student_id, date)
 );
 
@@ -118,6 +128,7 @@ CREATE TABLE IF NOT EXISTS materials (
     title VARCHAR(255) NOT NULL,
     description TEXT,
     file_path VARCHAR(255) NOT NULL,
+    file_name VARCHAR(255),
     file_type VARCHAR(50),
     created_by INT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -274,4 +285,7 @@ ON DUPLICATE KEY UPDATE id = id;
 -- Update materials table to add created_by column
 ALTER TABLE materials
 ADD COLUMN created_by INT NOT NULL AFTER file_type,
-ADD FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE; 
+ADD FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE;
+
+-- Add file_name column to materials table
+ALTER TABLE materials ADD COLUMN file_name VARCHAR(255) AFTER file_path; 
