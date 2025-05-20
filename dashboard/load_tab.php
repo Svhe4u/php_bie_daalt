@@ -27,13 +27,17 @@ switch ($tab) {
             SELECT c.*, 
                    COUNT(DISTINCT ce.student_id) as enrolled_students,
                    COUNT(DISTINCT a.id) as total_assignments,
-                   COUNT(DISTINCT m.id) as total_materials
+                   COUNT(DISTINCT m.id) as total_materials,
+                   (SELECT AVG(score) FROM evaluations WHERE course_id = c.id) as average_score,
+                   (SELECT AVG(grade) FROM grades WHERE course_id = c.id) as average_grade
             FROM courses c
             LEFT JOIN course_enrollments ce ON c.id = ce.course_id
             LEFT JOIN assignments a ON c.id = a.course_id
             LEFT JOIN materials m ON c.id = m.course_id
+            LEFT JOIN evaluations e ON c.id = e.course_id
+            LEFT JOIN grades g ON c.id = g.course_id
             WHERE c.teacher_id = ?
-            GROUP BY c.id
+            GROUP BY c.id, c.name, c.teacher_id, c.created_at
             ORDER BY c.created_at DESC
         ");
         $stmt->bind_param("i", $_SESSION['user_id']);

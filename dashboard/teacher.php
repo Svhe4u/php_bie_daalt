@@ -253,7 +253,7 @@ if (count($graded_courses) > 0) {
                         <li class="nav-item">
                             <a class="nav-link active" href="#overview" data-bs-toggle="tab">
                                 <i class="bi bi-house-door"></i> Хяналтын самбар
-            </a>
+                            </a>
                         </li>
                         <li class="nav-item">
                             <a class="nav-link" href="#classes" data-bs-toggle="tab">
@@ -283,17 +283,31 @@ if (count($graded_courses) > 0) {
                                 <?php endif; ?>
                             </a>
                         </li>
+                    <!-- <li class="nav-item">
+                            <a class="nav-link" href="courses.php">Хичээлүүд</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="materials.php">Материал</a>
+                        </li> -->
                     <li class="nav-item">
-                            <a class="nav-link" href="#resources" data-bs-toggle="tab">
-                                <i class="bi bi-folder"></i> Нөөц материал
+                        <a class="nav-link" href="#resources" data-bs-toggle="tab">
+                            <i class="bi bi-folder"></i> Нөөц материал
                         </a>
                     </li>
                     <li class="nav-item">
-                            <a class="nav-link" href="#settings" data-bs-toggle="tab">
-                                <i class="bi bi-gear"></i> Тохиргоо
-                            </a>
+                        <a class="nav-link" href="#settings" data-bs-toggle="tab">
+                            <i class="bi bi-gear"></i> Тохиргоо
+                        </a>
                     </li>
-                </ul>
+                    </ul>
+                    <hr class="my-3">
+                    <ul class="nav flex-column mb-2">
+                        <li class="nav-item">
+                            <a class="nav-link" href="../logout.php">
+                                <i class="bi bi-box-arrow-right"></i> Гарах
+                            </a>
+                        </li>
+                    </ul>
                 </div>
             </div>
 
@@ -308,19 +322,19 @@ if (count($graded_courses) > 0) {
                                 <div class="btn-group me-2">
                                     <button type="button" class="btn btn-sm btn-outline-secondary">Экспорт</button>
                                     <button type="button" class="btn btn-sm btn-outline-secondary">Хэвлэх</button>
-                    </div>
-                </div>
-            </div>
+                                </div>
+                            </div>
+                        </div>
 
                         <!-- Quick Stats -->
                         <div class="row mb-4">
-            <div class="col-md-3">
+                            <div class="col-md-3">
                                 <div class="stat-card bg-primary text-white p-3">
                                     <h6>Нийт хичээл</h6>
                                     <h3><?php echo $total_courses; ?></h3>
-                </div>
-            </div>
-            <div class="col-md-3">
+                                </div>
+                            </div>
+                            <div class="col-md-3">
                                 <div class="stat-card bg-success text-white p-3">
                                     <h6>Нийт сурагч</h6>
                                     <h3><?php echo $total_students; ?></h3>
@@ -338,7 +352,7 @@ if (count($graded_courses) > 0) {
                                     <h3><?php echo number_format($average_grade, 1); ?></h3>
                                 </div>
                             </div>
-                                                    </div>
+                        </div>
 
                         <!-- Upcoming Classes and Calendar -->
                         <div class="row">
@@ -351,7 +365,7 @@ if (count($graded_courses) > 0) {
                                                 <div class="d-flex w-100 justify-content-between">
                                                     <h5 class="mb-1"><?php echo htmlspecialchars($class['course_name']); ?></h5>
                                                     <small><?php echo date('H:i', strtotime($class['start_time'])); ?> - <?php echo date('H:i', strtotime($class['end_time'])); ?></small>
-                                                        </div>
+                                                </div>
                                                 <p class="mb-1">Өрөө: <?php echo htmlspecialchars($class['room']); ?></p>
                                                 <small>Сурагч: <?php echo $class['student_count']; ?></small>
                                             </a>
@@ -384,8 +398,8 @@ if (count($graded_courses) > 0) {
                                             </div>
                                         </div>
                                     <?php endforeach; ?>
-                                                            </div>
-                                                        </div>
+                                </div>
+                            </div>
                             <div class="col-md-6">
                                 <div class="dashboard-section">
                                     <h4>Сүүлийн мессэжнүүд</h4>
@@ -420,9 +434,12 @@ if (count($graded_courses) > 0) {
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/momentjs/latest/moment.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
     <script>
     document.addEventListener('DOMContentLoaded', function() {
-            // Initialize FullCalendar
+        // Initialize FullCalendar
         var calendarEl = document.getElementById('calendar');
         var calendar = new FullCalendar.Calendar(calendarEl, {
             initialView: 'dayGridMonth',
@@ -432,47 +449,53 @@ if (count($graded_courses) > 0) {
                 right: 'dayGridMonth,timeGridWeek,timeGridDay'
             },
             events: [
-                    <?php foreach ($upcoming_classes as $class): ?>
-                    {
-                        title: '<?php echo addslashes($class['course_name']); ?>',
-                        start: '<?php echo date('Y-m-d', strtotime($class['start_time'])); ?>T<?php echo date('H:i:s', strtotime($class['start_time'])); ?>',
-                        end: '<?php echo date('Y-m-d', strtotime($class['end_time'])); ?>T<?php echo date('H:i:s', strtotime($class['end_time'])); ?>',
-                        url: 'course.php?id=<?php echo $class['course_id']; ?>'
-                    },
-                    <?php endforeach; ?>
-                ]
-            });
-            calendar.render();
+                <?php foreach ($upcoming_classes as $class): ?>
+                {
+                    title: '<?php echo addslashes($class['course_name']); ?>',
+                    start: '<?php echo date('Y-m-d', strtotime($class['start_time'])); ?>T<?php echo date('H:i:s', strtotime($class['start_time'])); ?>',
+                    end: '<?php echo date('Y-m-d', strtotime($class['end_time'])); ?>T<?php echo date('H:i:s', strtotime($class['end_time'])); ?>',
+                    url: 'course.php?id=<?php echo $class['course_id']; ?>'
+                },
+                <?php endforeach; ?>
+            ]
+        });
+        calendar.render();
 
-            // Handle tab changes
-            document.querySelectorAll('.nav-link').forEach(link => {
-                link.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    const target = this.getAttribute('href').substring(1);
+        // Handle tab changes - Select only nav-links within the first ul
+        document.querySelectorAll('.nav.flex-column:first-of-type .nav-link').forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                const target = this.getAttribute('href').substring(1);
 
-                    // Remove active class from all tabs and links
-                    document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
-                    document.querySelectorAll('.tab-pane').forEach(t => t.classList.remove('show', 'active'));
-                    
-                    // Add active class to clicked link
-                    this.classList.add('active');
-                    
-                    // Show target tab
-                    const targetTab = document.getElementById(target);
+                // Remove active class from all tabs and links
+                document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+                document.querySelectorAll('.tab-pane').forEach(t => t.classList.remove('show', 'active'));
+                
+                // Add active class to clicked link
+                this.classList.add('active');
+                
+                // Show target tab
+                const targetTab = document.getElementById(target);
+                // Check if the target tab element exists before accessing classList
+                if (targetTab) {
                     targetTab.classList.add('show', 'active');
-                    
-                    // Load content if not overview tab
-                    if (target !== 'overview') {
-                        loadTabContent(target);
-                    }
-                });
+                } else {
+                    console.error('Target tab element not found:', target);
+                }
+                
+                // Load content if not overview tab
+                if (target !== 'overview') {
+                    loadTabContent(target);
+                }
             });
         });
+    });
 
-        function loadTabContent(tab) {
-            const targetTab = document.getElementById(tab);
-            
-            // Show loading indicator
+    function loadTabContent(tab) {
+        const targetTab = document.getElementById(tab);
+        
+        // Show loading indicator
+        if (targetTab) { // Add check here too
             targetTab.innerHTML = `
                 <div class="text-center py-5">
                     <div class="spinner-border text-primary" role="status">
@@ -481,28 +504,72 @@ if (count($graded_courses) > 0) {
                     <p class="mt-2">Ачааллаж байна...</p>
                 </div>
             `;
-            
-            // Load content
-            fetch(`load_tab.php?tab=${tab}`)
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('Network response was not ok');
-                    }
-                    return response.text();
-                })
-                .then(html => {
+        }
+        
+        // Load content
+        fetch(`load_tab.php?tab=${tab}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.text();
+            })
+            .then(html => {
+                if (targetTab) { // Add check here too
                     targetTab.innerHTML = html;
-                })
-                .catch(error => {
-                    console.error('Error loading tab content:', error);
+                    
+                    // Initialize Bootstrap modals within the loaded content
+                    $(targetTab).find('.modal').each(function() {
+                        new bootstrap.Modal(this);
+                    });
+                    
+                    // Reinitialize daterangepicker if the element exists and it's the attendance tab
+                    if (tab === 'attendance') {
+                        const reportDateRangeInput = targetTab.querySelector('#report_date_range');
+                        if (reportDateRangeInput && typeof $(reportDateRangeInput).daterangepicker !== 'undefined') {
+                             $(reportDateRangeInput).daterangepicker({
+                                locale: {
+                                    format: 'YYYY-MM-DD',
+                                    applyLabel: 'Сонгох',
+                                    cancelLabel: 'Болих',
+                                    fromLabel: 'Эхлэх',
+                                    toLabel: 'Дуусах',
+                                    customRangeLabel: 'Өөр',
+                                    daysOfWeek: ['Ня', 'Да', 'Мя', 'Лх', 'Пү', 'Ба', 'Бя'],
+                                    monthNames: ['1-р сар', '2-р сар', '3-р сар', '4-р сар', '5-р сар', '6-р сар', '7-р сар', '8-р сар', '9-р сар', '10-р сар', '11-р сар', '12-р сар'],
+                                    firstDay: 1
+                                },
+                                startDate: moment().subtract(30, 'days'),
+                                endDate: moment(),
+                                ranges: {
+                                    'Энэ 7 хоног': [moment().subtract(6, 'days'), moment()],
+                                    'Энэ сар': [moment().startOf('month'), moment().endOf('month')],
+                                    'Өнгөрсөн сар': [moment().subtract(1, 'month').startOf('month'), moment().subtract(1, 'month').endOf('month')]}
+                            });
+                        }
+                    }
+                    
+                    // Reinitialize any JavaScript components (like modals) within the loaded tab
+                    const loadedModals = targetTab.querySelectorAll('.modal');
+                    loadedModals.forEach(modalEl => {
+                        const modal = new bootstrap.Modal(modalEl);
+                    });
+                 } else {
+                    tabContent.innerHTML = '<p>Error loading tab content.</p>';
+                }
+            })
+            .catch(error => {
+                console.error('Error loading tab content:', error);
+                if (targetTab) { // Add check here too
                     targetTab.innerHTML = `
                         <div class="alert alert-danger m-3">
                             <i class="bi bi-exclamation-triangle"></i>
                             Ачаалахад алдаа гарлаа. Дараа дахин оролдоно уу.
                         </div>
                     `;
-    });
-        }
+                }
+            });
+    }
     </script>
 </body>
 </html> 

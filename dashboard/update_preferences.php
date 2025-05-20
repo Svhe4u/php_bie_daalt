@@ -1,65 +1,82 @@
 <?php
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-session_start();
-require_once '../db.php';
+header('Content-Type: application/json');
 
-// Check if user is logged in
-if (!isset($_SESSION['user_id'])) {
-    echo json_encode(['success' => false, 'message' => 'Нэвтрэх шаардлагатай.']);
+require_once __DIR__ . '/../db.php';
+require_once __DIR__ . '/../auth.php';
+
+$response = ['success' => false, 'message' => 'An error occurred.'];
+
+if (!isLoggedIn()) {
+    http_response_code(401);
+    $response['message'] = 'Unauthorized';
+    echo json_encode($response);
     exit();
 }
 
-// Check if form was submitted via POST
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    echo json_encode(['success' => false, 'message' => 'Буруу хүсэлт.']);
-    exit();
-}
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $user_id = $_SESSION['user_id'];
+    
+    // Get preferences from POST data
+    $language = $_POST['language'] ?? 'mn';
+    $timezone = $_POST['timezone'] ?? 'Asia/Ulaanbaatar';
+    $date_format = $_POST['date_format'] ?? 'Y-m-d';
+    $theme = $_POST['theme'] ?? 'light';
+    $font_size = $_POST['font_size'] ?? 'medium';
 
-$user_id = $_SESSION['user_id'];
+    // Validate inputs
+    $valid_languages = ['mn', 'en'];
+    $valid_themes = ['light', 'dark', 'system'];
+    $valid_font_sizes = ['small', 'medium', 'large'];
+    $valid_date_formats = ['Y-m-d', 'd/m/Y'];
 
-// Get preferences from POST data
-$language = $_POST['language'] ?? '';
-$timezone = $_POST['timezone'] ?? '';
-$date_format = $_POST['date_format'] ?? '';
+    if (!in_array($language, $valid_languages) ||
+        !in_array($theme, $valid_themes) ||
+        !in_array($font_size, $valid_font_sizes) ||
+        !in_array($date_format, $valid_date_formats)) {
+        http_response_code(400);
+        $response['message'] = 'Invalid preference values.';
+        echo json_encode($response);
+        exit();
+    }
 
-// Basic validation (you might want more robust validation)
-$allowed_languages = ['mn', 'en'];
-$allowed_timezones = ['Asia/Ulaanbaatar', 'UTC'];
-$allowed_date_formats = ['Y-m-d', 'd/m/Y'];
+    // Update preferences
+    $stmt = $conn->prepare("UPDATE user_settings SET 
+        language = ?,
+        timezone = ?,
+        date_format = ?,
+        theme = ?,
+        font_size = ?
+        WHERE user_id = ?");
+    
+    $stmt->bind_param("sssssi", 
+        $language,
+        $timezone,
+        $date_format,
+        $theme,
+        $font_size,
+        $user_id
+    );
 
-if (!in_array($language, $allowed_languages) || !in_array($timezone, $allowed_timezones) || !in_array($date_format, $allowed_date_formats)) {
-     echo json_encode(['success' => false, 'message' => 'Буруу оруулга.']);
-     exit();
-}
+    if ($stmt->execute()) {
+        $response['success'] = true;
+        $response['message'] = 'Preferences updated successfully.';
+        
+        // Update session data
+        $_SESSION['language'] = $language;
+        $_SESSION['timezone'] = $timezone;
+        $_SESSION['theme'] = $theme;
+        
+        http_response_code(200);
+    } else {
+        http_response_code(500);
+        $response['message'] = 'Failed to update preferences: ' . $conn->error;
+    }
 
-
-// Update preferences in the database
-// Assuming you have a teacher_settings table with columns like language, timezone, date_format
-// and a user_id column as primary key or foreign key
-
-// First, check if a record for this user exists
-$stmt = $conn->prepare("SELECT user_id FROM teacher_settings WHERE user_id = ?");
-$stmt->bind_param("i", $user_id);
-$stmt->execute();
-$result = $stmt->get_result();
-
-if ($result->num_rows > 0) {
-    // Record exists, update it
-    $stmt = $conn->prepare("UPDATE teacher_settings SET language = ?, timezone = ?, date_format = ? WHERE user_id = ?");
-    $stmt->bind_param("sssi", $language, $timezone, $date_format, $user_id);
+    $stmt->close();
 } else {
-    // No record exists, insert a new one
-     $stmt = $conn->prepare("INSERT INTO teacher_settings (user_id, language, timezone, date_format) VALUES (?, ?, ?, ?)");
-     $stmt->bind_param("issss", $user_id, $language, $timezone, $date_format);
+    http_response_code(405);
+    $response['message'] = 'Method not allowed.';
 }
 
-if ($stmt->execute()) {
-    echo json_encode(['success' => true, 'message' => 'Тохиргоо амжилттай хадгалагдлаа.']);
-} else {
-    echo json_encode(['success' => false, 'message' => 'Тохиргоо хадгалахад алдаа гарлаа: ' . $conn->error]);
-}
-
-$stmt->close();
-$conn->close();
+echo json_encode($response);
 ?> 

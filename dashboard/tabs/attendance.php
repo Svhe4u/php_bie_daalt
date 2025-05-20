@@ -1,6 +1,12 @@
 <?php
 // Attendance tab content
 ?>
+<!-- Add required CSS and JS dependencies -->
+<link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css" />
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script type="text/javascript" src="https://cdn.jsdelivr.net/momentjs/latest/moment.min.js"></script>
+<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
+
 <div class="dashboard-section">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h4>Ирцийн бүртгэл</h4>
@@ -59,7 +65,7 @@
                                     <?php echo $status_text; ?>
                                 </span>
                             </td>
-                            <td><?php echo htmlspecialchars($record['notes']); ?></td>
+                            <td><?php echo htmlspecialchars($record['note'] ?? ''); ?></td>
                             <td>
                                 <div class="btn-group">
                                     <button type="button" 
@@ -103,7 +109,7 @@
                                             <div class="mb-3">
                                                 <label for="notes<?php echo $record['id']; ?>" class="form-label">Тайлбар</label>
                                                 <textarea class="form-control" id="notes<?php echo $record['id']; ?>" 
-                                                          name="notes" rows="3"><?php echo htmlspecialchars($record['notes']); ?></textarea>
+                                                          name="notes" rows="3"><?php echo htmlspecialchars($record['note'] ?? ''); ?></textarea>
                                             </div>
                                         </div>
                                         <div class="modal-footer">
@@ -253,104 +259,249 @@
 </div>
 
 <script>
-// Load students when course is selected
-document.getElementById('course_id').addEventListener('change', function() {
-    const courseId = this.value;
-    const tbody = document.getElementById('studentsList');
-    tbody.innerHTML = '<tr><td colspan="3" class="text-center">Сурагчдыг ачаалж байна...</td></tr>'; // Loading indicator
+$(document).ready(function() {
+    // Initialize date range picker
+    $('#report_date_range').daterangepicker({
+        locale: {
+            format: 'YYYY-MM-DD',
+            applyLabel: 'Сонгох',
+            cancelLabel: 'Болих',
+            fromLabel: 'Эхлэх',
+            toLabel: 'Дуусах',
+            customRangeLabel: 'Өөр',
+            daysOfWeek: ['Ня', 'Да', 'Мя', 'Лх', 'Пү', 'Ба', 'Бя'],
+            monthNames: ['1-р сар', '2-р сар', '3-р сар', '4-р сар', '5-р сар', '6-р сар', '7-р сар', '8-р сар', '9-р сар', '10-р сар', '11-р сар', '12-р сар'],
+            firstDay: 1
+        },
+        startDate: moment().subtract(30, 'days'),
+        endDate: moment(),
+        ranges: {
+            'Энэ 7 хоног': [moment().subtract(6, 'days'), moment()],
+            'Энэ сар': [moment().startOf('month'), moment().endOf('month')],
+            'Өнгөрсөн сар': [moment().subtract(1, 'month').startOf('month'), moment().subtract(1, 'month').endOf('month')]
+        }
+    });
 
-    if (courseId) {
-        fetch(`get_students.php?course_id=${courseId}`)
-            .then(response => {
-                if (!response.ok) {
-                    // Log non-200 responses
-                    console.error('HTTP error!', response.status, response.statusText);
-                    tbody.innerHTML = '<tr><td colspan="3" class="text-center text-danger">Сурагчдыг ачаалахад алдаа гарлаа.</td></tr>';
-                    return Promise.reject('HTTP error'); // Propagate error
-                }
-                return response.json();
-            })
-            .then(students => {
-                console.log('Fetched students:', students);
-                if (students.length > 0) {
-                    tbody.innerHTML = students.map(student => `
-                        <tr>
-                            <td>${student.name}</td>
-                            <td>
-                                <select class="form-select" name="status[${student.id}]" required>
-                                    <option value="present">Ирсэн</option>
-                                    <option value="absent">Тасалсан</option>
-                                    <option value="late">Хоцорсон</option>
-                                    <option value="excused">Зөвшөөрөлтэй</option>
-                                </select>
-                            </td>
-                            <td>
-                                <input type="text" class="form-control" name="notes[${student.id}]">
-                            </td>
-                        </tr>
-                    `).join('');
-                } else {
-                    tbody.innerHTML = '<tr><td colspan="3" class="text-center">Энэ хичээлд бүртгэлтэй сурагч байхгүй байна.</td></tr>';
-                }
-            })
-            .catch(error => {
-                console.error('Fetch error:', error);
-                 if (error !== 'HTTP error') { // Avoid double error message for HTTP errors
-                     tbody.innerHTML = '<tr><td colspan="3" class="text-center text-danger">Сурагчдыг ачаалахад алдаа гарлаа.</td></tr>';
-                 }
-            });
-    } else {
-         tbody.innerHTML = '<tr><td colspan="3" class="text-center">Хичээл сонгоно уу.</td></tr>';
-    }
-});
-
-// Initialize date range picker
-document.getElementById('report_date_range').addEventListener('change', function() {
-    const courseId = document.getElementById('report_course_id').value;
-    const dateRange = this.value;
-    if (courseId && dateRange) {
-        fetch(`get_attendance_report.php?course_id=${courseId}&date_range=${dateRange}`)
-            .then(response => response.json())
-            .then(report => {
-                const content = document.getElementById('reportContent');
-                content.innerHTML = `
-                    <div class="table-responsive">
-                        <table class="table">
-                            <thead>
+    // Handle course selection for taking attendance
+    $(document).on('change', '#course_id', function() {
+        console.log('Course select change event fired.');
+        var courseId = $(this).val();
+        console.log('Selected Course ID:', courseId);
+        
+        if (courseId) {
+            $('#studentsList').html('<div class="text-center"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div></div>');
+            
+            // Log the URL we're calling
+            var url = 'get_students.php?course_id=' + courseId;
+            console.log('Calling URL:', url);
+            
+            $.ajax({
+                url: url,
+                type: 'GET',
+                dataType: 'json',
+                success: function(response) {
+                    console.log('get_students.php response:', response);
+                    if (response.error) {
+                        $('#studentsList').html('<div class="alert alert-danger">' + response.error + '</div>');
+                    } else {
+                        var html = '';
+                        if (response.length > 0) {
+                            response.forEach(function(student) {
+                                html += `
                                 <tr>
-                                    <th>Сурагч</th>
-                                    <th>Ирсэн</th>
-                                    <th>Тасалсан</th>
-                                    <th>Хоцорсон</th>
-                                    <th>Зөвшөөрөлтэй</th>
-                                    <th>Ирцийн хувь</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${report.map(row => `
-                                    <tr>
-                                        <td>${row.student_name}</td>
-                                        <td>${row.present}</td>
-                                        <td>${row.absent}</td>
-                                        <td>${row.late}</td>
-                                        <td>${row.excused}</td>
-                                        <td>${row.attendance_rate}%</td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                    </div>
-                `;
+                                    <td>${student.name}</td>
+                                    <td>
+                                        <div class="btn-group" role="group">
+                                            <input type="radio" class="btn-check" name="status[${student.id}]" id="present_${student.id}" value="present" checked>
+                                            <label class="btn btn-outline-success" for="present_${student.id}">Ирсэн</label>
+                                            
+                                            <input type="radio" class="btn-check" name="status[${student.id}]" id="absent_${student.id}" value="absent">
+                                            <label class="btn btn-outline-danger" for="absent_${student.id}">Тасалсан</label>
+                                            
+                                            <input type="radio" class="btn-check" name="status[${student.id}]" id="late_${student.id}" value="late">
+                                            <label class="btn btn-outline-warning" for="late_${student.id}">Хоцорсон</label>
+                                            
+                                            <input type="radio" class="btn-check" name="status[${student.id}]" id="excused_${student.id}" value="excused">
+                                            <label class="btn btn-outline-info" for="excused_${student.id}">Зөвшөөрөлтэй</label>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <input type="text" class="form-control" name="notes[${student.id}]" placeholder="Тайлбар...">
+                                    </td>
+                                </tr>`;
+                            });
+                            $('#studentsList').html(html);
+                        } else {
+                            $('#studentsList').html('<tr><td colspan="3" class="text-center">Энэ хичээлд бүртгэлтэй сурагч байхгүй байна.</td></tr>');
+                        }
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error('get_students.php AJAX error:', {
+                        status: status,
+                        error: error,
+                        response: xhr.responseText
+                    });
+                    $('#studentsList').html('<div class="alert alert-danger">Сурагчдын мэдээлэл ачаалахад алдаа гарлаа. Дэлгэрэнгүй: ' + error + '</div>');
+                }
             });
-    }
-});
+        } else {
+            $('#studentsList').html('');
+        }
+    });
 
-// Export report
-document.getElementById('exportReport').addEventListener('click', function() {
-    const courseId = document.getElementById('report_course_id').value;
-    const dateRange = document.getElementById('report_date_range').value;
-    if (courseId && dateRange) {
-        window.location.href = `export_attendance_report.php?course_id=${courseId}&date_range=${dateRange}`;
-    }
+    // Handle attendance form submission
+    $(document).on('submit', '#takeAttendanceModal form', function(e) {
+        e.preventDefault();
+        var formData = $(this).serialize();
+        
+        $.ajax({
+            url: 'take_attendance.php',
+            type: 'POST',
+            data: formData,
+            success: function(response) {
+                if (response.error) {
+                    alert(response.error);
+                } else {
+                    alert('Ирцийн бүртгэл амжилттай хадгалагдлаа.');
+                    $('#takeAttendanceModal').modal('hide');
+                    location.reload();
+                }
+            },
+            error: function() {
+                alert('Ирцийн бүртгэл хадгалахад алдаа гарлаа.');
+            }
+        });
+    });
+
+    // Handle report generation
+    $(document).on('change', '#report_course_id', function() {
+        var courseId = $(this).val();
+        var dateRange = $('#report_date_range').val();
+        
+        if (courseId && dateRange) {
+            $('#reportContent').html('<div class="text-center"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div></div>');
+            
+            $.ajax({
+                url: 'get_attendance_report.php',
+                type: 'GET',
+                data: {
+                    course_id: courseId,
+                    date_range: dateRange
+                },
+                success: function(response) {
+                    if (response.error) {
+                        $('#reportContent').html('<div class="alert alert-danger">' + response.error + '</div>');
+                    } else {
+                        var html = '<div class="table-responsive"><table class="table table-striped">';
+                        html += '<thead><tr><th>Сурагч</th><th>Ирсэн</th><th>Тасалсан</th><th>Хоцорсон</th><th>Зөвшөөрөлтэй</th><th>Нийт</th><th>Ирцийн хувь</th></tr></thead><tbody>';
+                        
+                        response.forEach(function(row) {
+                            var rateClass = row.attendance_rate >= 80 ? 'success' : 
+                                          row.attendance_rate >= 60 ? 'warning' : 'danger';
+                            
+                            html += `<tr>
+                                <td>${row.student_name}</td>
+                                <td>${row.present}</td>
+                                <td>${row.absent}</td>
+                                <td>${row.late}</td>
+                                <td>${row.excused}</td>
+                                <td>${row.total_classes}</td>
+                                <td>
+                                    <div class="progress">
+                                        <div class="progress-bar bg-${rateClass}" role="progressbar" 
+                                             style="width: ${row.attendance_rate}%" 
+                                             aria-valuenow="${row.attendance_rate}" 
+                                             aria-valuemin="0" 
+                                             aria-valuemax="100">
+                                            ${row.attendance_rate}%
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>`;
+                        });
+                        
+                        html += '</tbody></table></div>';
+                        $('#reportContent').html(html);
+                    }
+                },
+                error: function() {
+                    $('#reportContent').html('<div class="alert alert-danger">Тайлан үүсгэхэд алдаа гарлаа.</div>');
+                }
+            });
+        }
+    });
+
+    // Handle export report
+    $(document).on('click', '#exportReport', function() {
+        var courseId = $('#report_course_id').val();
+        var dateRange = $('#report_date_range').val();
+        
+        if (!courseId || !dateRange) {
+            alert('Хичээл болон огноо сонгоно уу.');
+            return;
+        }
+        
+        window.location.href = 'export_attendance_report.php?course_id=' + courseId + '&date_range=' + encodeURIComponent(dateRange);
+    });
+
+    // Handle edit attendance
+    $('.edit-attendance').click(function() {
+        var attendanceId = $(this).data('id');
+        var status = $(this).data('status');
+        var notes = $(this).data('notes');
+        
+        $('#edit_attendance_id').val(attendanceId);
+        $(`#edit_status_${status}`).prop('checked', true);
+        $('#edit_notes').val(notes);
+    });
+
+    // Handle edit form submission
+    $('#edit_attendance_form').submit(function(e) {
+        e.preventDefault();
+        var formData = $(this).serialize();
+        
+        $.ajax({
+            url: 'edit_attendance.php',
+            type: 'POST',
+            data: formData,
+            success: function(response) {
+                if (response.error) {
+                    alert(response.error);
+                } else {
+                    alert('Ирцийн бүртгэл амжилттай шинэчлэгдлээ.');
+                    $('#editAttendanceModal').modal('hide');
+                    location.reload();
+                }
+            },
+            error: function() {
+                alert('Ирцийн бүртгэл шинэчлэхэд алдаа гарлаа.');
+            }
+        });
+    });
+
+    // Handle delete attendance
+    $('.delete-attendance').click(function() {
+        if (confirm('Энэ ирцийн бүртгэлийг устгахдаа итгэлтэй байна уу?')) {
+            var attendanceId = $(this).data('id');
+            
+            $.ajax({
+                url: 'delete_attendance.php',
+                type: 'POST',
+                data: { attendance_id: attendanceId },
+                success: function(response) {
+                    if (response.error) {
+                        alert(response.error);
+                    } else {
+                        alert('Ирцийн бүртгэл амжилттай устгагдлаа.');
+                        location.reload();
+                    }
+                },
+                error: function() {
+                    alert('Ирцийн бүртгэл устгахад алдаа гарлаа.');
+                }
+            });
+        }
+    });
 });
 </script> 

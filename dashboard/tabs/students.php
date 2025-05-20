@@ -78,98 +78,6 @@
                                 </div>
                             </td>
                         </tr>
-
-                        <!-- Grade Modal -->
-                        <div class="modal fade" id="gradeModal<?php echo $student['id']; ?>" tabindex="-1">
-                            <div class="modal-dialog">
-                                <div class="modal-content">
-                                    <div class="modal-header">
-                                        <h5 class="modal-title">Дүн оруулах</h5>
-                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                    </div>
-                                    <form action="update_grade.php" method="POST">
-                                        <input type="hidden" name="student_id" value="<?php echo $student['id']; ?>">
-                                        <div class="modal-body">
-                                            <div class="mb-3">
-                                                <label for="course_id" class="form-label">Хичээл</label>
-                                                <select class="form-select" id="course_id" name="course_id" required>
-                                                    <option value="">Сонгох...</option>
-                                                    <?php
-                                                    $stmt = $conn->prepare("
-                                                        SELECT c.id, c.name
-                                                        FROM courses c
-                                                        JOIN course_enrollments ce ON c.id = ce.course_id
-                                                        WHERE ce.student_id = ? AND c.teacher_id = ?
-                                                    ");
-                                                    $stmt->bind_param("ii", $student['id'], $_SESSION['user_id']);
-                                                    $stmt->execute();
-                                                    $student_courses = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-                                                    foreach ($student_courses as $course):
-                                                    ?>
-                                                        <option value="<?php echo $course['id']; ?>">
-                                                            <?php echo htmlspecialchars($course['name']); ?>
-                                                        </option>
-                                                    <?php endforeach; ?>
-                                                </select>
-                                            </div>
-                                            <div class="mb-3">
-                                                <label for="grade" class="form-label">Дүн</label>
-                                                <input type="number" class="form-control" id="grade" name="grade" 
-                                                       min="0" max="100" step="0.1" required>
-                                            </div>
-                                            <div class="mb-3">
-                                                <label for="feedback" class="form-label">Санал хүсэлт</label>
-                                                <textarea class="form-control" id="feedback" name="feedback" rows="3"></textarea>
-                                            </div>
-                                        </div>
-                                        <div class="modal-footer">
-                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Болих</button>
-                                            <button type="submit" class="btn btn-primary">Хадгалах</button>
-                                        </div>
-                                    </form>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Message Modal -->
-                        <div class="modal fade" id="messageModal<?php echo $student['id']; ?>" tabindex="-1">
-                            <div class="modal-dialog">
-                                <div class="modal-content">
-                                    <div class="modal-header">
-                                        <h5 class="modal-title">Мессэж илгээх</h5>
-                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                    </div>
-                                    <form action="send_message.php" method="POST">
-                                        <input type="hidden" name="receiver_id" value="<?php echo $student['id']; ?>">
-                                        <div class="modal-body">
-                                            <div class="mb-3">
-                                                <label for="course_id" class="form-label">Хичээл</label>
-                                                <select class="form-select" id="course_id" name="course_id">
-                                                    <option value="">Сонгох...</option>
-                                                    <?php foreach ($student_courses as $course): ?>
-                                                        <option value="<?php echo $course['id']; ?>">
-                                                            <?php echo htmlspecialchars($course['name']); ?>
-                                                        </option>
-                                                    <?php endforeach; ?>
-                                                </select>
-                                            </div>
-                                            <div class="mb-3">
-                                                <label for="subject" class="form-label">Гарчиг</label>
-                                                <input type="text" class="form-control" id="subject" name="subject">
-                                            </div>
-                                            <div class="mb-3">
-                                                <label for="content" class="form-label">Мессэж</label>
-                                                <textarea class="form-control" id="content" name="content" rows="4" required></textarea>
-                                            </div>
-                                        </div>
-                                        <div class="modal-footer">
-                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Болих</button>
-                                            <button type="submit" class="btn btn-primary">Илгээх</button>
-                                        </div>
-                                    </form>
-                                </div>
-                            </div>
-                        </div>
                     <?php endforeach; ?>
                 </tbody>
             </table>
@@ -177,15 +85,112 @@
     <?php endif; ?>
 </div>
 
+<!-- Grade Modals -->
+<?php foreach ($students as $student): ?>
+<div class="modal fade" id="gradeModal<?php echo $student['id']; ?>" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Дүн оруулах: <?php echo htmlspecialchars($student['name']); ?></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="update_grade.php" method="POST">
+                <input type="hidden" name="student_id" value="<?php echo $student['id']; ?>">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="grade_course_id<?php echo $student['id']; ?>" class="form-label">Хичээл</label>
+                        <select class="form-select" id="grade_course_id<?php echo $student['id']; ?>" name="course_id" required>
+                            <option value="">Сонгох...</option>
+                            <?php
+                            $stmt = $conn->prepare("
+                                SELECT c.id, c.name
+                                FROM courses c
+                                JOIN course_enrollments ce ON c.id = ce.course_id
+                                WHERE ce.student_id = ? AND c.teacher_id = ?
+                            ");
+                            $stmt->bind_param("ii", $student['id'], $_SESSION['user_id']);
+                            $stmt->execute();
+                            $student_courses = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+                            foreach ($student_courses as $course):
+                            ?>
+                                <option value="<?php echo $course['id']; ?>">
+                                    <?php echo htmlspecialchars($course['name']); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="grade<?php echo $student['id']; ?>" class="form-label">Дүн</label>
+                        <input type="number" class="form-control" id="grade<?php echo $student['id']; ?>" name="grade" 
+                               min="0" max="100" step="0.1" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="feedback<?php echo $student['id']; ?>" class="form-label">Санал хүсэлт</label>
+                        <textarea class="form-control" id="feedback<?php echo $student['id']; ?>" name="feedback" rows="3"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Болих</button>
+                    <button type="submit" class="btn btn-primary">Хадгалах</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Message Modal -->
+<div class="modal fade" id="messageModal<?php echo $student['id']; ?>" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Мессэж илгээх: <?php echo htmlspecialchars($student['name']); ?></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="send_message.php" method="POST">
+                <input type="hidden" name="receiver_id" value="<?php echo $student['id']; ?>">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="message_course_id<?php echo $student['id']; ?>" class="form-label">Хичээл</label>
+                        <select class="form-select" id="message_course_id<?php echo $student['id']; ?>" name="course_id">
+                            <option value="">Сонгох...</option>
+                            <?php foreach ($student_courses as $course): ?>
+                                <option value="<?php echo $course['id']; ?>">
+                                    <?php echo htmlspecialchars($course['name']); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="subject<?php echo $student['id']; ?>" class="form-label">Гарчиг</label>
+                        <input type="text" class="form-control" id="subject<?php echo $student['id']; ?>" name="subject">
+                    </div>
+                    <div class="mb-3">
+                        <label for="content<?php echo $student['id']; ?>" class="form-label">Мессэж</label>
+                        <textarea class="form-control" id="content<?php echo $student['id']; ?>" name="content" rows="4" required></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Болих</button>
+                    <button type="submit" class="btn btn-primary">Илгээх</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<?php endforeach; ?>
+
 <script>
 document.getElementById('studentSearch').addEventListener('keyup', function() {
-    const searchText = this.value.toLowerCase();
+    const searchText = this.value.toLowerCase().trim();
     const table = this.closest('.dashboard-section').querySelector('table');
     const rows = table.getElementsByTagName('tr');
 
     for (let i = 1; i < rows.length; i++) {
-        const name = rows[i].getElementsByTagName('td')[0].textContent.toLowerCase();
-        const email = rows[i].getElementsByTagName('td')[1].textContent.toLowerCase();
+        const cells = rows[i].getElementsByTagName('td');
+        if (cells.length === 0) continue;
+        
+        const name = cells[0].textContent.toLowerCase().trim();
+        const email = cells[1].textContent.toLowerCase().trim();
         
         if (name.includes(searchText) || email.includes(searchText)) {
             rows[i].style.display = '';
@@ -193,5 +198,13 @@ document.getElementById('studentSearch').addEventListener('keyup', function() {
             rows[i].style.display = 'none';
         }
     }
+});
+
+// Initialize all modals
+document.addEventListener('DOMContentLoaded', function() {
+    const modals = document.querySelectorAll('.modal');
+    modals.forEach(modal => {
+        new bootstrap.Modal(modal);
+    });
 });
 </script> 

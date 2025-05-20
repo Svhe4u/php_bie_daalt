@@ -1,69 +1,88 @@
 <?php
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-session_start();
-require_once '../db.php';
+header('Content-Type: application/json');
 
-// Check if user is logged in
-if (!isset($_SESSION['user_id'])) {
-    header("Location: ../login.php");
+require_once __DIR__ . '/../db.php';
+require_once __DIR__ . '/../auth.php';
+
+$response = ['success' => false, 'message' => 'An error occurred.'];
+
+if (!isLoggedIn()) {
+    http_response_code(401);
+    $response['message'] = 'Unauthorized';
+    echo json_encode($response);
     exit();
 }
 
-// Check if file was uploaded
-if (!isset($_FILES['profile_image']) || $_FILES['profile_image']['error'] !== UPLOAD_ERR_OK) {
-    $_SESSION['error'] = "Файл оруулахад алдаа гарлаа.";
-    header("Location: teacher.php");
-    exit();
-}
-
-$file = $_FILES['profile_image'];
-$allowed_types = ['image/jpeg', 'image/png', 'image/gif'];
-$max_size = 2 * 1024 * 1024; // 2MB
-
-// Validate file type
-if (!in_array($file['type'], $allowed_types)) {
-    $_SESSION['error'] = "Зөвшөөрөгдөөгүй файлын төрөл байна. Зөвшөөрөгдсөн төрлүүд: JPG, PNG, GIF";
-    header("Location: teacher.php");
-    exit();
-}
-
-// Validate file size
-if ($file['size'] > $max_size) {
-    $_SESSION['error'] = "Файлын хэмжээ хэт их байна. Хамгийн их хэмжээ: 2MB";
-    header("Location: teacher.php");
-    exit();
-}
-
-// Create uploads directory if it doesn't exist
-$upload_dir = '../uploads/profile_images/';
-if (!file_exists($upload_dir)) {
-    mkdir($upload_dir, 0777, true);
-}
-
-// Generate unique filename
-$file_extension = pathinfo($file['name'], PATHINFO_EXTENSION);
-$new_filename = uniqid('profile_') . '.' . $file_extension;
-$upload_path = $upload_dir . $new_filename;
-
-// Move uploaded file
-if (move_uploaded_file($file['tmp_name'], $upload_path)) {
-    // Update database
-    $stmt = $conn->prepare("UPDATE users SET profile_picture = ? WHERE id = ?");
-    $profile_picture_path = 'uploads/profile_images/' . $new_filename;
-    $stmt->bind_param("si", $profile_picture_path, $_SESSION['user_id']);
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $user_id = $_SESSION['user_id'];
     
-    if ($stmt->execute()) {
-        $_SESSION['success'] = "Профайл зураг амжилттай шинэчлэгдлээ.";
+    // Check if file was uploaded
+    if (!isset($_FILES['profile_picture']) || $_FILES['profile_picture']['error'] !== UPLOAD_ERR_OK) {
+        http_response_code(400);
+        $response['message'] = 'No file uploaded or upload error occurred.';
+        echo json_encode($response);
+        exit();
+    }
+
+    $file = $_FILES['profile_picture'];
+    
+    // Validate file type
+    $allowed_types = ['image/jpeg', 'image/png', 'image/gif'];
+    if (!in_array($file['type'], $allowed_types)) {
+        http_response_code(400);
+        $response['message'] = 'Invalid file type. Only JPG, PNG, and GIF are allowed.';
+        echo json_encode($response);
+        exit();
+    }
+
+    // Validate file size (2MB max)
+    $max_size = 2 * 1024 * 1024; // 2MB in bytes
+    if ($file['size'] > $max_size) {
+        http_response_code(400);
+        $response['message'] = 'File size too large. Maximum size is 2MB.';
+        echo json_encode($response);
+        exit();
+    }
+
+    // Create uploads directory if it doesn't exist
+    $upload_dir = __DIR__ . '/../uploads/profile_pictures/';
+    if (!file_exists($upload_dir)) {
+        mkdir($upload_dir, 0777, true);
+    }
+
+    // Generate unique filename
+    $extension = pathinfo($file['name'], PATHINFO_EXTENSION);
+    $filename = uniqid('profile_') . '.' . $extension;
+    $target_path = $upload_dir . $filename;
+
+    // Move uploaded file
+    if (move_uploaded_file($file['tmp_name'], $target_path)) {
+        // Update database with new profile picture path
+        $relative_path = 'uploads/profile_pictures/' . $filename;
+        $stmt = $conn->prepare("UPDATE users SET profile_picture = ? WHERE id = ?");
+        $stmt->bind_param("si", $relative_path, $user_id);
+
+        if ($stmt->execute()) {
+            $response['success'] = true;
+            $response['message'] = 'Profile picture updated successfully.';
+            $response['new_photo_url'] = $relative_path;
+            http_response_code(200);
+        } else {
+            http_response_code(500);
+            $response['message'] = 'Failed to update profile picture in database: ' . $conn->error;
+            // Clean up uploaded file if database update fails
+            unlink($target_path);
+        }
+
+        $stmt->close();
     } else {
-        $_SESSION['error'] = "Мэдээллийн сангийн алдаа гарлаа.";
-        // Delete uploaded file if database update fails
-        unlink($upload_path);
+        http_response_code(500);
+        $response['message'] = 'Failed to save uploaded file.';
     }
 } else {
-    $_SESSION['error'] = "Файл хадгалахад алдаа гарлаа.";
+    http_response_code(405);
+    $response['message'] = 'Method not allowed.';
 }
 
-header("Location: teacher.php");
-exit();
+echo json_encode($response);
 ?> 

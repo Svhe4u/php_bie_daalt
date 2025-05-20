@@ -1,67 +1,86 @@
 <?php
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-session_start();
-require_once '../db.php';
+header('Content-Type: application/json');
 
-// Check if user is logged in
-if (!isset($_SESSION['user_id'])) {
-    $_SESSION['error'] = "Нэвтрэх шаардлагатай.";
-    header("Location: ../login.php");
+require_once __DIR__ . '/../db.php';
+require_once __DIR__ . '/../auth.php';
+
+$response = ['success' => false, 'message' => 'An error occurred.'];
+
+if (!isLoggedIn()) {
+    http_response_code(401);
+    $response['message'] = 'Unauthorized';
+    echo json_encode($response);
     exit();
 }
 
-// Check if form was submitted via POST
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    $_SESSION['error'] = "Буруу хүсэлт.";
-    header("Location: teacher.php"); // Redirect back to settings or dashboard
-    exit();
-}
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $user_id = $_SESSION['user_id'];
+    $current_password = $_POST['current_password'] ?? '';
+    $new_password = $_POST['new_password'] ?? '';
+    $confirm_password = $_POST['confirm_password'] ?? '';
 
-$user_id = $_SESSION['user_id'];
-$current_password = $_POST['current_password'] ?? '';
-$new_password = $_POST['new_password'] ?? '';
-$confirm_password = $_POST['confirm_password'] ?? '';
+    // Basic validation
+    if (empty($current_password) || empty($new_password) || empty($confirm_password)) {
+        http_response_code(400);
+        $response['message'] = 'All password fields are required.';
+        echo json_encode($response);
+        exit();
+    }
 
-// Basic validation
-if (empty($current_password) || empty($new_password) || empty($confirm_password)) {
-    $_SESSION['error'] = "Бүх талбарыг бөглөнө үү.";
-    header("Location: teacher.php#settings");
-    exit();
-}
+    if ($new_password !== $confirm_password) {
+        http_response_code(400);
+        $response['message'] = 'New passwords do not match.';
+        echo json_encode($response);
+        exit();
+    }
 
-if ($new_password !== $confirm_password) {
-    $_SESSION['error'] = "Шинэ нууц үг таарахгүй байна.";
-    header("Location: teacher.php#settings");
-    exit();
-}
+    // Password strength validation
+    if (strlen($new_password) < 8 ||
+        !preg_match('/[A-Z]/', $new_password) ||
+        !preg_match('/[a-z]/', $new_password) ||
+        !preg_match('/[0-9]/', $new_password)) {
+        http_response_code(400);
+        $response['message'] = 'Password must be at least 8 characters long and contain uppercase, lowercase, and numbers.';
+        echo json_encode($response);
+        exit();
+    }
 
-// Fetch current user's password hash
-$stmt = $conn->prepare("SELECT password FROM users WHERE id = ?");
-$stmt->bind_param("i", $user_id);
-$stmt->execute();
-$result = $stmt->get_result();
-$user = $result->fetch_assoc();
+    // Verify current password
+    $stmt = $conn->prepare("SELECT password FROM users WHERE id = ?");
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $user = $result->fetch_assoc();
+    $stmt->close();
 
-if (!$user || !password_verify($current_password, $user['password'])) {
-    $_SESSION['error'] = "Одоогийн нууц үг буруу байна.";
-    header("Location: teacher.php#settings");
-    exit();
-}
+    if (!$user || !password_verify($current_password, $user['password'])) {
+        http_response_code(400);
+        $response['message'] = 'Current password is incorrect.';
+        echo json_encode($response);
+        exit();
+    }
 
-// Hash the new password
-$hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
+    // Hash new password
+    $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
 
-// Update the password in the database
-$stmt = $conn->prepare("UPDATE users SET password = ? WHERE id = ?");
-$stmt->bind_param("si", $hashed_password, $user_id);
+    // Update password
+    $stmt = $conn->prepare("UPDATE users SET password = ? WHERE id = ?");
+    $stmt->bind_param("si", $hashed_password, $user_id);
 
-if ($stmt->execute()) {
-    $_SESSION['success'] = "Нууц үг амжилттай солигдлоо.";
+    if ($stmt->execute()) {
+        $response['success'] = true;
+        $response['message'] = 'Password updated successfully.';
+        http_response_code(200);
+    } else {
+        http_response_code(500);
+        $response['message'] = 'Failed to update password: ' . $conn->error;
+    }
+
+    $stmt->close();
 } else {
-    $_SESSION['error'] = "Нууц үг солиход алдаа гарлаа: " . $conn->error;
+    http_response_code(405);
+    $response['message'] = 'Method not allowed.';
 }
 
-header("Location: teacher.php#settings");
-exit();
+echo json_encode($response);
 ?> 

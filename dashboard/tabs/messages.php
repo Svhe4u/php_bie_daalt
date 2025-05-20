@@ -166,6 +166,23 @@
 </div>
 
 <script>
+// Check if Bootstrap is available
+function getBootstrap() {
+    if (typeof bootstrap !== 'undefined') {
+        return bootstrap;
+    }
+    // If bootstrap is not available, try to get it from jQuery
+    if (typeof $ !== 'undefined' && $.fn.modal) {
+        return {
+            Modal: function(element) {
+                return $(element).modal();
+            }
+        };
+    }
+    console.error('Bootstrap is not loaded. Please make sure bootstrap.bundle.min.js is included.');
+    return null;
+}
+
 // Toggle recipient/course selection based on message type
 document.getElementById('message_type').addEventListener('change', function() {
     const recipientGroup = document.getElementById('recipientGroup');
@@ -186,6 +203,16 @@ document.getElementById('message_type').addEventListener('change', function() {
     }
 });
 
+// Helper function to escape HTML
+function escapeHtml(unsafe) {
+    return unsafe
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
 // Load messages for different folders
 document.querySelectorAll('.list-group-item[data-folder]').forEach(item => {
     item.addEventListener('click', function(e) {
@@ -196,11 +223,26 @@ document.querySelectorAll('.list-group-item[data-folder]').forEach(item => {
         document.querySelectorAll('.list-group-item[data-folder]').forEach(i => i.classList.remove('active'));
         this.classList.add('active');
         
+        // Show loading state
+        const messageList = document.getElementById('messageList');
+        messageList.innerHTML = `
+            <div class="text-center py-4">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Ачааллаж байна...</span>
+                </div>
+                <p class="mt-2">Зурвасыг ачааллаж байна...</p>
+            </div>
+        `;
+        
         // Load messages
-        fetch(`get_messages.php?folder=${folder}`)
-            .then(response => response.json())
+        fetch(`get_messages.php?folder=${encodeURIComponent(folder)}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
             .then(messages => {
-                const messageList = document.getElementById('messageList');
                 if (messages.length === 0) {
                     messageList.innerHTML = `
                         <div class="text-center py-4">
@@ -215,28 +257,37 @@ document.querySelectorAll('.list-group-item[data-folder]').forEach(item => {
                         <div class="list-group">
                             ${messages.map(message => `
                                 <a href="#" class="list-group-item list-group-item-action message-item ${message.is_read ? '' : 'unread'}" 
-                                   data-message-id="${message.id}">
+                                   data-message-id="${escapeHtml(message.id)}">
                                     <div class="d-flex w-100 justify-content-between">
                                         <h6 class="mb-1">
                                             ${!message.is_read ? '<span class="badge bg-primary me-2">Шинэ</span>' : ''}
-                                            ${message.subject}
+                                            ${escapeHtml(message.subject)}
                                         </h6>
                                         <small>${new Date(message.created_at).toLocaleString()}</small>
                                     </div>
                                     <p class="mb-1">
                                         ${message.type === 'announcement' ? '<span class="badge bg-info me-2">Зарлал</span>' : ''}
-                                        ${message.content.substring(0, 100)}...
+                                        ${escapeHtml(message.content.substring(0, 100))}...
                                     </p>
                                     <small>
                                         ${message.type === 'message' 
-                                            ? `${message.sender_name} → ${message.recipient_name}`
-                                            : message.course_name}
+                                            ? `${escapeHtml(message.sender_name)} → ${escapeHtml(message.recipient_name)}`
+                                            : escapeHtml(message.course_name)}
                                     </small>
                                 </a>
                             `).join('')}
                         </div>
                     `;
                 }
+            })
+            .catch(error => {
+                console.error('Error loading messages:', error);
+                messageList.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        Зурвас ачаалахад алдаа гарлаа. Дараа дахин оролдоно уу.
+                    </div>
+                `;
             });
     });
 });
@@ -246,32 +297,92 @@ document.addEventListener('click', function(e) {
     if (e.target.closest('.message-item')) {
         e.preventDefault();
         const messageId = e.target.closest('.message-item').dataset.messageId;
+        const bootstrap = getBootstrap();
+        if (!bootstrap) return;
         
-        fetch(`get_message.php?id=${messageId}`)
-            .then(response => response.json())
+        const viewMessageModal = new bootstrap.Modal(document.getElementById('viewMessageModal'));
+        
+        // Show loading state
+        document.getElementById('messageSubject').textContent = 'Ачааллаж байна...';
+        document.getElementById('messageInfo').textContent = '';
+        document.getElementById('messageContent').innerHTML = `
+            <div class="text-center py-4">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Ачааллаж байна...</span>
+                </div>
+            </div>
+        `;
+        document.getElementById('replyButton').disabled = true;
+        
+        // Show modal
+        viewMessageModal.show();
+        
+        // Load message
+        fetch(`get_message.php?id=${encodeURIComponent(messageId)}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
             .then(message => {
                 document.getElementById('messageSubject').textContent = message.subject;
-                document.getElementById('messageInfo').textContent = `
-                    ${message.type === 'message' 
-                        ? `${message.sender_name} → ${message.recipient_name}`
-                        : message.course_name} | 
-                    ${new Date(message.created_at).toLocaleString()}
+                document.getElementById('messageInfo').innerHTML = `
+                    <div class="d-flex justify-content-between">
+                        <span>
+                            ${message.type === 'message' 
+                                ? `Илгээсэн: ${escapeHtml(message.sender_name)} → Хүлээн авагч: ${escapeHtml(message.recipient_name)}`
+                                : `Хичээл: ${escapeHtml(message.course_name)}`}
+                        </span>
+                        <span>${new Date(message.created_at).toLocaleString()}</span>
+                    </div>
                 `;
-                document.getElementById('messageContent').textContent = message.content;
+                document.getElementById('messageContent').innerHTML = `
+                    <div class="message-content">
+                        ${message.content.split('\n').map(line => `<p>${escapeHtml(line)}</p>`).join('')}
+                    </div>
+                `;
+                document.getElementById('replyButton').disabled = false;
                 
-                const viewMessageModal = new bootstrap.Modal(document.getElementById('viewMessageModal'));
-                viewMessageModal.show();
-                
-                // Mark as read
+                // Mark as read if not already
                 if (!message.is_read) {
-                    fetch(`mark_message_read.php?id=${messageId}`);
+                    fetch(`mark_as_read.php?id=${encodeURIComponent(messageId)}`, { method: 'POST' })
+                        .then(response => {
+                            if (response.ok) {
+                                // Update UI to show message as read
+                                const messageItem = document.querySelector(`.message-item[data-message-id="${escapeHtml(messageId)}"]`);
+                                if (messageItem) {
+                                    messageItem.classList.remove('unread');
+                                    const newBadge = messageItem.querySelector('.badge');
+                                    if (newBadge) {
+                                        newBadge.remove();
+                                    }
+                                }
+                            }
+                        })
+                        .catch(error => console.error('Error marking message as read:', error));
                 }
+            })
+            .catch(error => {
+                console.error('Error loading message:', error);
+                document.getElementById('messageSubject').textContent = 'Алдаа гарлаа';
+                document.getElementById('messageInfo').textContent = '';
+                document.getElementById('messageContent').innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        Зурвас ачаалахад алдаа гарлаа. Дараа дахин оролдоно уу.
+                    </div>
+                `;
+                document.getElementById('replyButton').disabled = true;
             });
     }
 });
 
 // Reply to message
 document.getElementById('replyButton').addEventListener('click', function() {
+    const bootstrap = getBootstrap();
+    if (!bootstrap) return;
+    
     const message = {
         subject: document.getElementById('messageSubject').textContent,
         sender: document.getElementById('messageInfo').textContent.split(' → ')[0].trim()
@@ -282,8 +393,22 @@ document.getElementById('replyButton').addEventListener('click', function() {
     document.getElementById('recipient_id').value = message.sender;
     document.getElementById('subject').value = `Re: ${message.subject}`;
     
-    bootstrap.Modal.getInstance(document.getElementById('viewMessageModal')).hide();
+    const currentModal = bootstrap.Modal.getInstance(document.getElementById('viewMessageModal'));
+    if (currentModal) {
+        currentModal.hide();
+    }
     newMessageModal.show();
+});
+
+// Initialize modals
+document.addEventListener('DOMContentLoaded', function() {
+    const bootstrap = getBootstrap();
+    if (!bootstrap) return;
+    
+    const modals = document.querySelectorAll('.modal');
+    modals.forEach(modal => {
+        new bootstrap.Modal(modal);
+    });
 });
 </script>
 
