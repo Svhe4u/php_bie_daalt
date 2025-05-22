@@ -109,21 +109,32 @@ switch ($tab) {
         break;
 
     case 'messages':
+        // Get unread message count
+        $stmt = $conn->prepare("
+            SELECT COUNT(*) as unread_count
+            FROM messages
+            WHERE receiver_id = ? AND is_read = 0
+        ");
+        $stmt->bind_param("i", $_SESSION['user_id']);
+        $stmt->execute();
+        $unread_count = $stmt->get_result()->fetch_assoc()['unread_count'];
+
         // Get all messages for the teacher
         $stmt = $conn->prepare("
-            SELECT m.*, u.name as sender_name, c.name as course_name,
-                   (SELECT COUNT(*) FROM messages WHERE receiver_id = ? AND is_read = 0) as unread_count
+            SELECT m.*, 
+                   u1.name as sender_name,
+                   u2.name as recipient_name,
+                   c.name as course_name
             FROM messages m
-            JOIN users u ON m.sender_id = u.id
+            LEFT JOIN users u1 ON m.sender_id = u1.id
+            LEFT JOIN users u2 ON m.receiver_id = u2.id
             LEFT JOIN courses c ON m.course_id = c.id
             WHERE m.receiver_id = ?
             ORDER BY m.created_at DESC
         ");
-        $stmt->bind_param("ii", $_SESSION['user_id'], $_SESSION['user_id']);
+        $stmt->bind_param("i", $_SESSION['user_id']);
         $stmt->execute();
-        $result = $stmt->get_result();
-        $messages = $result->fetch_all(MYSQLI_ASSOC);
-        $unread_count = $result->fetch_assoc()['unread_count'] ?? 0;
+        $messages = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
         
         include 'tabs/messages.php';
         break;

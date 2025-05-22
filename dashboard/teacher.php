@@ -154,6 +154,16 @@ $stmt->bind_param("i", $_SESSION['user_id']);
 $stmt->execute();
 $messages = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
+// Get unread message count
+$stmt = $conn->prepare("
+    SELECT COUNT(*) as unread_count
+    FROM messages
+    WHERE receiver_id = ? AND is_read = 0
+");
+$stmt->bind_param("i", $_SESSION['user_id']);
+$stmt->execute();
+$unread_count = $stmt->get_result()->fetch_assoc()['unread_count'];
+
 // Calculate statistics
 $total_courses = count($courses);
 $total_students = array_sum(array_column($courses, 'enrolled_students'));
@@ -278,8 +288,8 @@ if (count($graded_courses) > 0) {
                         <li class="nav-item">
                             <a class="nav-link" href="#messages" data-bs-toggle="tab">
                                 <i class="bi bi-chat-dots"></i> Мессэж
-                                <?php if (count($messages) > 0): ?>
-                                    <span class="notification-badge"><?php echo count($messages); ?></span>
+                                <?php if ($unread_count > 0): ?>
+                                    <span class="notification-badge"><?php echo $unread_count; ?></span>
                                 <?php endif; ?>
                             </a>
                         </li>
@@ -403,17 +413,31 @@ if (count($graded_courses) > 0) {
                             <div class="col-md-6">
                                 <div class="dashboard-section">
                                     <h4>Сүүлийн мессэжнүүд</h4>
-                                    <?php foreach ($messages as $message): ?>
-                                        <div class="card mb-2 <?php echo $message['is_read'] ? '' : 'border-primary'; ?>">
-                                            <div class="card-body">
-                                                <h5 class="card-title"><?php echo htmlspecialchars($message['sender_name']); ?></h5>
-                                                <p class="card-text"><?php echo htmlspecialchars($message['content']); ?></p>
-                                                <small class="text-muted">
-                                                    <?php echo date('Y-m-d H:i', strtotime($message['created_at'])); ?>
-                                                </small>
+                                    <?php if (empty($messages)): ?>
+                                        <p class="text-muted">Мессэж байхгүй байна.</p>
+                                    <?php else: ?>
+                                        <?php foreach ($messages as $message): ?>
+                                            <div class="card mb-2 <?php echo $message['is_read'] ? '' : 'border-primary'; ?>">
+                                                <div class="card-body">
+                                                    <div class="d-flex justify-content-between align-items-start">
+                                                        <h5 class="card-title mb-1"><?php echo htmlspecialchars($message['sender_name']); ?></h5>
+                                                        <?php if (!$message['is_read']): ?>
+                                                            <span class="badge bg-primary">Шинэ</span>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                    <p class="card-text"><?php echo htmlspecialchars($message['content']); ?></p>
+                                                    <div class="d-flex justify-content-between align-items-center">
+                                                        <small class="text-muted">
+                                                            <?php echo htmlspecialchars($message['course_name']); ?>
+                                                        </small>
+                                                        <small class="text-muted">
+                                                            <?php echo date('Y-m-d H:i', strtotime($message['created_at'])); ?>
+                                                        </small>
+                                                    </div>
+                                                </div>
                                             </div>
-                                        </div>
-                                    <?php endforeach; ?>
+                                        <?php endforeach; ?>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                         </div>
@@ -432,144 +456,8 @@ if (count($graded_courses) > 0) {
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js"></script>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/momentjs/latest/moment.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
-    <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        // Initialize FullCalendar
-        var calendarEl = document.getElementById('calendar');
-        var calendar = new FullCalendar.Calendar(calendarEl, {
-            initialView: 'dayGridMonth',
-            headerToolbar: {
-                left: 'prev,next today',
-                center: 'title',
-                right: 'dayGridMonth,timeGridWeek,timeGridDay'
-            },
-            events: [
-                <?php foreach ($upcoming_classes as $class): ?>
-                {
-                    title: '<?php echo addslashes($class['course_name']); ?>',
-                    start: '<?php echo date('Y-m-d', strtotime($class['start_time'])); ?>T<?php echo date('H:i:s', strtotime($class['start_time'])); ?>',
-                    end: '<?php echo date('Y-m-d', strtotime($class['end_time'])); ?>T<?php echo date('H:i:s', strtotime($class['end_time'])); ?>',
-                    url: 'course.php?id=<?php echo $class['course_id']; ?>'
-                },
-                <?php endforeach; ?>
-            ]
-        });
-        calendar.render();
-
-        // Handle tab changes - Select only nav-links within the first ul
-        document.querySelectorAll('.nav.flex-column:first-of-type .nav-link').forEach(link => {
-            link.addEventListener('click', function(e) {
-                e.preventDefault();
-                const target = this.getAttribute('href').substring(1);
-
-                // Remove active class from all tabs and links
-                document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
-                document.querySelectorAll('.tab-pane').forEach(t => t.classList.remove('show', 'active'));
-                
-                // Add active class to clicked link
-                this.classList.add('active');
-                
-                // Show target tab
-                const targetTab = document.getElementById(target);
-                // Check if the target tab element exists before accessing classList
-                if (targetTab) {
-                    targetTab.classList.add('show', 'active');
-                } else {
-                    console.error('Target tab element not found:', target);
-                }
-                
-                // Load content if not overview tab
-                if (target !== 'overview') {
-                    loadTabContent(target);
-                }
-            });
-        });
-    });
-
-    function loadTabContent(tab) {
-        const targetTab = document.getElementById(tab);
-        
-        // Show loading indicator
-        if (targetTab) { // Add check here too
-            targetTab.innerHTML = `
-                <div class="text-center py-5">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
-                    <p class="mt-2">Ачааллаж байна...</p>
-                </div>
-            `;
-        }
-        
-        // Load content
-        fetch(`load_tab.php?tab=${tab}`)
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
-                return response.text();
-            })
-            .then(html => {
-                if (targetTab) { // Add check here too
-                    targetTab.innerHTML = html;
-                    
-                    // Initialize Bootstrap modals within the loaded content
-                    $(targetTab).find('.modal').each(function() {
-                        new bootstrap.Modal(this);
-                    });
-                    
-                    // Reinitialize daterangepicker if the element exists and it's the attendance tab
-                    if (tab === 'attendance') {
-                        const reportDateRangeInput = targetTab.querySelector('#report_date_range');
-                        if (reportDateRangeInput && typeof $(reportDateRangeInput).daterangepicker !== 'undefined') {
-                             $(reportDateRangeInput).daterangepicker({
-                                locale: {
-                                    format: 'YYYY-MM-DD',
-                                    applyLabel: 'Сонгох',
-                                    cancelLabel: 'Болих',
-                                    fromLabel: 'Эхлэх',
-                                    toLabel: 'Дуусах',
-                                    customRangeLabel: 'Өөр',
-                                    daysOfWeek: ['Ня', 'Да', 'Мя', 'Лх', 'Пү', 'Ба', 'Бя'],
-                                    monthNames: ['1-р сар', '2-р сар', '3-р сар', '4-р сар', '5-р сар', '6-р сар', '7-р сар', '8-р сар', '9-р сар', '10-р сар', '11-р сар', '12-р сар'],
-                                    firstDay: 1
-                                },
-                                startDate: moment().subtract(30, 'days'),
-                                endDate: moment(),
-                                ranges: {
-                                    'Энэ 7 хоног': [moment().subtract(6, 'days'), moment()],
-                                    'Энэ сар': [moment().startOf('month'), moment().endOf('month')],
-                                    'Өнгөрсөн сар': [moment().subtract(1, 'month').startOf('month'), moment().subtract(1, 'month').endOf('month')]}
-                            });
-                        }
-                    }
-                    
-                    // Reinitialize any JavaScript components (like modals) within the loaded tab
-                    const loadedModals = targetTab.querySelectorAll('.modal');
-                    loadedModals.forEach(modalEl => {
-                        const modal = new bootstrap.Modal(modalEl);
-                    });
-                 } else {
-                    tabContent.innerHTML = '<p>Error loading tab content.</p>';
-                }
-            })
-            .catch(error => {
-                console.error('Error loading tab content:', error);
-                if (targetTab) { // Add check here too
-                    targetTab.innerHTML = `
-                        <div class="alert alert-danger m-3">
-                            <i class="bi bi-exclamation-triangle"></i>
-                            Ачаалахад алдаа гарлаа. Дараа дахин оролдоно уу.
-                        </div>
-                    `;
-                }
-            });
-    }
-    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="../js/teacher.js"></script>
 </body>
 </html> 
